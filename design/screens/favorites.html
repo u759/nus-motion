@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#25a8f4",
+                        "background-light": "#f5f7f8",
+                        "background-dark": "#101b22",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .slide-action {
+            background: linear-gradient(90deg, transparent 0%, rgba(37, 168, 244, 0.1) 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="relative flex min-h-screen w-full flex-col max-w-md mx-auto overflow-x-hidden border-x border-slate-200 dark:border-slate-800 shadow-2xl">
+<header class="sticky top-0 z-20 glass px-6 py-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-2xl">star</span>
+<h1 class="text-xl font-bold tracking-tight">Favorites</h1>
+</div>
+<button class="size-10 rounded-full glass flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">add</span>
+</button>
+</header>
+<main class="flex-1 overflow-y-auto px-6 pb-24">
+<section class="mt-8">
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400">Favorite Bus Lines</h2>
+<span class="text-[10px] text-primary/60">3 active</span>
+</div>
+<div class="space-y-3">
+<div class="glass rounded-xl p-4 flex items-center gap-4 relative overflow-hidden group">
+<div class="flex flex-col items-center justify-center size-12 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+<span class="text-primary font-bold text-lg">A1</span>
+</div>
+<div class="flex-1 min-w-0">
+<h3 class="font-semibold text-sm truncate">Internal Shuttle A1</h3>
+<p class="text-xs text-slate-400">Next: 4 mins • Normal Service</p>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="material-symbols-outlined text-slate-500 text-sm">chevron_right</span>
+</div>
+</div>
+<div class="glass rounded-xl p-4 flex items-center gap-4 relative overflow-hidden group">
+<div class="flex flex-col items-center justify-center size-12 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+<span class="text-primary font-bold text-lg">D2</span>
+</div>
+<div class="flex-1 min-w-0">
+<h3 class="font-semibold text-sm truncate">Internal Shuttle D2</h3>
+<p class="text-xs text-slate-400">Next: 12 mins • High Frequency</p>
+</div>
+<div class="flex flex-col items-end gap-1">
+<span class="material-symbols-outlined text-slate-500 text-sm">chevron_right</span>
+</div>
+</div>
+</div>
+</section>
+<section class="mt-10">
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400">Saved Stops</h2>
+<button class="text-[10px] text-primary hover:underline">Edit List</button>
+</div>
+<div class="space-y-4">
+<div class="relative overflow-hidden group">
+<div class="absolute inset-y-0 right-0 w-24 flex items-center justify-center bg-red-500/20 text-red-400 rounded-xl">
+<span class="material-symbols-outlined">delete</span>
+</div>
+<div class="glass rounded-xl p-5 flex flex-col gap-4 relative z-10 transition-transform hover:-translate-x-2">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-full bg-slate-800 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-400 text-lg">location_on</span>
+</div>
+<div>
+<h3 class="font-semibold text-sm">University Hall</h3>
+<p class="text-[10px] text-slate-500">Stop ID: 16199</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-primary text-xs font-medium">Arriving Now</p>
+<p class="text-[10px] text-slate-500">Bus A2</p>
+</div>
+</div>
+<div class="h-[1px] w-full bg-white/5"></div>
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-800/50 text-[10px] text-slate-300">A1 • 5m</span>
+<span class="px-2 py-1 rounded bg-slate-800/50 text-[10px] text-slate-300">D1 • 8m</span>
+<span class="px-2 py-1 rounded bg-slate-800/50 text-[10px] text-slate-300">K • 14m</span>
+</div>
+</div>
+</div>
+<div class="glass rounded-xl p-5 flex flex-col gap-4 relative">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-full bg-slate-800 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-400 text-lg">apartment</span>
+</div>
+<div>
+<h3 class="font-semibold text-sm">UTown Residence</h3>
+<p class="text-[10px] text-slate-500">Stop ID: 17091</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-slate-300 text-xs font-medium">3 mins</p>
+<p class="text-[10px] text-slate-500">Bus D2</p>
+</div>
+</div>
+<div class="h-[1px] w-full bg-white/5"></div>
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-slate-800/50 text-[10px] text-slate-300">D2 • 3m</span>
+<span class="px-2 py-1 rounded bg-slate-800/50 text-[10px] text-slate-300">E • 10m</span>
+</div>
+</div>
+<div class="glass rounded-xl p-4 flex items-center justify-center border-dashed border-slate-700">
+<button class="flex items-center gap-2 text-slate-500 text-sm hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm">add_circle</span>
+<span>Add new destination</span>
+</button>
+</div>
+</div>
+</section>
+<section class="mt-10 mb-8">
+<h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">Recent Activity</h2>
+<div class="glass rounded-xl p-4 flex items-center gap-4 opacity-60 grayscale">
+<div class="size-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-slate-400">history</span>
+</div>
+<div class="flex-1">
+<p class="text-xs">Traveled from <span class="font-medium text-slate-200">UTown</span> to <span class="font-medium text-slate-200">Science</span></p>
+<p class="text-[10px] text-slate-500">2 hours ago • Bus D1</p>
+</div>
+</div>
+</section>
+</main>
+<nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass border-t border-white/10 z-30">
+<div class="flex justify-around items-center px-4 py-3">
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="text-[10px] font-medium">Home</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined">directions_bus</span>
+<span class="text-[10px] font-medium">Routes</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined fill-1">star</span>
+<span class="text-[10px] font-medium">Favorites</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-500" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-[10px] font-medium">Profile</span>
+</a>
+</div>
+<div class="h-6 w-full flex justify-center items-end pb-2">
+<div class="w-24 h-1 rounded-full bg-white/20"></div>
+</div>
+</nav>
+</div>
+</body></html>
