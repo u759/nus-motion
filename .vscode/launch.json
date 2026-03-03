@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+        "type": "java",
+        "name": "BackendApplication",
+        "request": "launch",
+        "mainClass": "com.nusmotion.backend.BackendApplication",
+        "projectName": ""
+    },
+    {
+        "type": "java",
+        "name": "Spring Boot - BackendApplication",
+        "request": "launch",
+        "cwd": "${workspaceFolder}/backend",
+        "mainClass": "com.nusmotion.backend.BackendApplication",
+        "projectName": "backend",
+        "args": "",
+        "envFile": "${workspaceFolder}/.env"
+    }
+]
+}

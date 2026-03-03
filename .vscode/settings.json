@@ -1,0 +1,9 @@
+{
+  "java.project.sourcePaths": [],
+  "java.project.referencedLibraries": [],
+  "java.import.exclusions": [
+    "**/frontend/**"
+  ],
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.import.maven.enabled": true
+}
