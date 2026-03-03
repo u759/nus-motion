@@ -1,0 +1,266 @@
+openapi: "3.0.0"
+info:
+  title: NUS NextBus
+  description: "Unofficially reverse-engineered API used by NUS NextBus application."
+  version: 2.0.0
+servers:
+  - url: https://nnextbus.nus.edu.sg
+    description: Current server used by NUS NextBus app
+paths:
+  /BusStops:
+    get:
+      summary: Get list of bus stops
+      operationId: GetListOfBusStops
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  BusStopsResult:
+                    type: object
+                    properties:
+                      busstops:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            LongName: { type: string }
+                            ShortName: { type: string }
+                            caption: { type: string }
+                            latitude: { type: number, format: double }
+                            longitude: { type: number, format: double }
+                            name: { type: string }
+  /ShuttleService:
+    get:
+      summary: Get shuttle service at a stop
+      operationId: GetShuttleService
+      parameters:
+        - in: query
+          name: busstopname
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ShuttleServiceResult:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      caption: { type: string }
+                      shuttles:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            arrivalTime: { type: string }
+                            arrivalTime_veh_plate: { type: string }
+                            nextArrivalTime: { type: string }
+                            nextArrivalTime_veh_plate: { type: string }
+                            passengers: { type: string }
+                            nextPassengers: { type: string }
+  /ActiveBus:
+    get:
+      summary: Get active buses on a route
+      operationId: GetActiveBus
+      parameters:
+        - in: query
+          name: route_code
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ActiveBusResult:
+                    type: object
+                    properties:
+                      ActiveBusCount: { type: string }
+                      activebus:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            veh_plate: { type: string }
+                            lat: { type: number, format: float }
+                            lng: { type: number, format: float }
+                            speed: { type: integer }
+                            direction: { type: integer }
+  /CheckPoint:
+    get:
+      summary: Get route checkpoints (polyline)
+      operationId: GetAllCheckpoints
+      parameters:
+        - in: query
+          name: route_code
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  CheckPointResult:
+                    type: object
+                    properties:
+                      CheckPoint:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            PointID: { type: string }
+                            latitude: { type: number, format: double }
+                            longitude: { type: number, format: double }
+                            routeid: { type: integer }
+  /Announcements:
+    get:
+      summary: Get announcements
+      operationId: GetAnnouncements
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  AnnouncementsResult:
+                    type: object
+                    properties:
+                      Announcement:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            Affected_Service_Ids: { type: string }
+                            ID: { type: string }
+                            Priority: { type: string }
+                            Status: { type: string }
+                            Text: { type: string }
+  /RouteMinMaxTime:
+    get:
+      summary: Get route operating hours
+      operationId: GetRouteMinMaxTime
+      parameters:
+        - in: query
+          name: route_code
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RouteMinMaxTimeResult:
+                    type: object
+                    properties:
+                      RouteMinMaxTime:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            DayType: { type: string }
+                            FirstTime: { type: string }
+                            LastTime: { type: string }
+                            ScheduleType: { type: string }
+  /ServiceDescription:
+    get:
+      summary: Get route descriptions
+      operationId: GetServiceDescription
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ServiceDescriptionResult:
+                    type: object
+                    properties:
+                      ServiceDescription:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            Route: { type: string }
+                            RouteDescription: { type: string }
+  /PickupPoint:
+    get:
+      summary: Get pickup points for a route
+      operationId: GetPickupPoint
+      parameters:
+        - in: query
+          name: route_code
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  PickupPointResult:
+                    type: object
+                    properties:
+                      pickuppoint:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            LongName: { type: string }
+                            ShortName: { type: string }
+                            busstopcode: { type: string }
+                            lat: { type: number, format: double }
+                            lng: { type: number, format: double }
+                            pickupname: { type: string }
+                            routeid: { type: integer }
+  /TickerTapes:
+    get:
+      summary: Get ticker tapes (alerts with location)
+      operationId: GetTickerTapes
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TickerTapesResult:
+                    type: object
+                    properties:
+                      TickerTape:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            Accident_Latitude: { type: number }
+                            Accident_Longitude: { type: number }
+                            Affected_Service_Ids: { type: string }
+                            ID: { type: string }
+                            Message: { type: string }
+                            Priority: { type: string }
+                            Status: { type: string }
+components:
+  securitySchemes:
+    Basic:
+      type: http
+      scheme: basic
+security:
+  - Basic: []
