@@ -3,7 +3,10 @@ package com.nusmotion.backend.controller;
 import com.nusmotion.backend.dto.*;
 import com.nusmotion.backend.dto.Wrappers.ShuttleServiceResult;
 import com.nusmotion.backend.service.NusApiService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
 
@@ -54,5 +57,70 @@ public class BusController {
     @GetMapping("/active-buses")
     public List<ActiveBus> getActiveBuses(@RequestParam("route") String routeCode) {
         return nusApiService.getActiveBuses(routeCode);
+    }
+
+    @GetMapping("/checkpoints")
+    public List<CheckPoint> getCheckpoints(@RequestParam("route") String routeCode) {
+        return nusApiService.getCheckpoints(routeCode);
+    }
+
+    @GetMapping("/announcements")
+    public List<Announcement> getAnnouncements() {
+        return nusApiService.getAnnouncements();
+    }
+
+    @GetMapping("/schedule")
+    public List<RouteSchedule> getSchedule(@RequestParam("route") String routeCode) {
+        return nusApiService.getRouteMinMaxTime(routeCode);
+    }
+
+    @GetMapping("/service-descriptions")
+    public List<ServiceDescription> getServiceDescriptions() {
+        return nusApiService.getServiceDescriptions();
+    }
+
+    @GetMapping("/pickup-points")
+    public List<PickupPoint> getPickupPoints(@RequestParam("route") String routeCode) {
+        return nusApiService.getPickupPoints(routeCode);
+    }
+
+    @GetMapping("/ticker-tapes")
+    public List<TickerTape> getTickerTapes() {
+        return nusApiService.getTickerTapes();
+    }
+
+    /**
+     * Experimental passthrough. Upstream currently returns 500 on this endpoint.
+     */
+    @GetMapping("/publicity")
+    public ResponseEntity<String> getPublicity() {
+        try {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(nusApiService.getPublicity());
+        } catch (RestClientResponseException e) {
+            return ResponseEntity.status(502)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"error\":\"Upstream /publicity unavailable\",\"upstreamStatus\":" + e.getStatusCode().value() + "}");
+        }
+    }
+
+    /**
+     * Experimental passthrough. Upstream currently returns 500 on this endpoint.
+     * Optional query params: route, stop.
+     */
+    @GetMapping("/bus-location")
+    public ResponseEntity<String> getBusLocation(
+            @RequestParam(value = "route", required = false) String routeCode,
+            @RequestParam(value = "stop", required = false) String busstopname) {
+        try {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(nusApiService.getBusLocation(routeCode, busstopname));
+        } catch (RestClientResponseException e) {
+            return ResponseEntity.status(502)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"error\":\"Upstream /BusLocation unavailable\",\"upstreamStatus\":" + e.getStatusCode().value() + "}");
+        }
     }
 }

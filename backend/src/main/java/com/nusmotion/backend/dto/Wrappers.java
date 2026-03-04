@@ -38,4 +38,46 @@ public final class Wrappers {
     public record ActiveBusResult(
             @JsonProperty("ActiveBusCount") String activeBusCount,
             @JsonProperty("activebus") List<ActiveBus> activeBuses) {}
+
+    // ── /CheckPoint ──
+    public record CheckPointResponse(
+            @JsonProperty("CheckPointResult") CheckPointResult checkPointResult) {}
+
+    public record CheckPointResult(
+            @JsonProperty("CheckPoint") List<CheckPoint> checkPoints) {}
+
+    // ── /Announcements ──
+    public record AnnouncementsResponse(
+            @JsonProperty("AnnouncementsResult") AnnouncementsResult announcementsResult) {}
+
+    public record AnnouncementsResult(
+            @JsonProperty("Announcement") List<Announcement> announcements) {}
+
+    // ── /RouteMinMaxTime ──
+    public record RouteMinMaxTimeResponse(
+            @JsonProperty("RouteMinMaxTimeResult") RouteMinMaxTimeResult routeMinMaxTimeResult) {}
+
+    public record RouteMinMaxTimeResult(
+            @JsonProperty("RouteMinMaxTime") List<RouteSchedule> routeSchedules) {}
+
+    // ── /ServiceDescription ──
+    public record ServiceDescriptionResponse(
+            @JsonProperty("ServiceDescriptionResult") ServiceDescriptionResult serviceDescriptionResult) {}
+
+    public record ServiceDescriptionResult(
+            @JsonProperty("ServiceDescription") List<ServiceDescription> serviceDescriptions) {}
+
+    // ── /PickupPoint ──
+    public record PickupPointResponse(
+            @JsonProperty("PickupPointResult") PickupPointResult pickupPointResult) {}
+
+    public record PickupPointResult(
+            @JsonProperty("pickuppoint") List<PickupPoint> pickupPoints) {}
+
+    // ── /TickerTapes ──
+    public record TickerTapesResponse(
+            @JsonProperty("TickerTapesResult") TickerTapesResult tickerTapesResult) {}
+
+    public record TickerTapesResult(
+            @JsonProperty("TickerTape") List<TickerTape> tickerTapes) {}
 }

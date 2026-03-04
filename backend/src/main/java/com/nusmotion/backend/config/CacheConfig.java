@@ -34,10 +34,78 @@ public class CacheConfig {
                 .expireAfterWrite(Duration.ofSeconds(10))
                 .maximumSize(200));
 
-        // You can register named caches with different specs later, e.g.:
-        //   manager.registerCustomCache("busStops",
-        //       Caffeine.newBuilder().expireAfterWrite(Duration.ofMinutes(5))
-        //              .maximumSize(50).build());
+        manager.registerCustomCache("busStops",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(5))
+                .maximumSize(1)
+                .build());
+
+        manager.registerCustomCache("checkpoints",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(20)
+                .build());
+
+        manager.registerCustomCache("announcements",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(30))
+                .maximumSize(1)
+                .build());
+
+        manager.registerCustomCache("schedule",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(1))
+                .maximumSize(20)
+                .build());
+
+        manager.registerCustomCache("shuttleService",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(10))
+                .maximumSize(200)
+                .build());
+
+        manager.registerCustomCache("activeBuses",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(10))
+                .maximumSize(50)
+                .build());
+
+        manager.registerCustomCache("serviceDescriptions",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(1))
+                .maximumSize(1)
+                .build());
+
+        manager.registerCustomCache("pickupPoints",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(50)
+                .build());
+
+        manager.registerCustomCache("tickerTapes",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(30))
+                .maximumSize(1)
+                .build());
+
+        manager.registerCustomCache("publicity",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(1)
+                .build());
+
+        manager.registerCustomCache("busLocation",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(10))
+                .maximumSize(200)
+                .build());
+
+        // Buildings data rarely changes — cache for 1 hour, single entry (full list)
+        manager.registerCustomCache("buildings",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofHours(1))
+                .maximumSize(1)
+                .build());
 
         return manager;
     }
