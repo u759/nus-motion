@@ -100,6 +100,24 @@ public class CacheConfig {
                 .maximumSize(200)
                 .build());
 
+        manager.registerCustomCache("nearbyStops",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(20))
+                .maximumSize(500)
+                .build());
+
+        manager.registerCustomCache("routePlans",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(20))
+                .maximumSize(200)
+                .build());
+
+        manager.registerCustomCache("weather",
+            Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(10))
+                .maximumSize(200)
+                .build());
+
         // Buildings data rarely changes — cache for 1 hour, single entry (full list)
         manager.registerCustomCache("buildings",
             Caffeine.newBuilder()

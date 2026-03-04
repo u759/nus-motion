@@ -6,6 +6,8 @@ import com.nusmotion.backend.controller.BuildingController;
 import com.nusmotion.backend.controller.BusController;
 import com.nusmotion.backend.service.BuildingService;
 import com.nusmotion.backend.service.NusApiService;
+import com.nusmotion.backend.service.RoutingService;
+import com.nusmotion.backend.service.WeatherService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,13 +35,19 @@ class BackendApplicationTests {
 
 	private BuildingService buildingService;
 
+	private RoutingService routingService;
+
+	private WeatherService weatherService;
+
 	@BeforeEach
 	void setUp() {
 		nusApiService = mock(NusApiService.class);
 		buildingService = mock(BuildingService.class);
+		routingService = mock(RoutingService.class);
+		weatherService = mock(WeatherService.class);
 
 		mockMvc = MockMvcBuilders.standaloneSetup(
-				new BusController(nusApiService),
+				new BusController(nusApiService, routingService, weatherService),
 				new BuildingController(buildingService)
 		).build();
 	}
@@ -84,7 +92,7 @@ class BackendApplicationTests {
 
 		mockMvc.perform(get("/api/active-buses").param("route", "A1"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].veh_plate").value("SBA1234A"))
+				.andExpect(jsonPath("$[0].vehplate").value("SBA1234A"))
 				.andExpect(jsonPath("$[0].speed").value(32));
 	}
 
@@ -130,7 +138,7 @@ class BackendApplicationTests {
 	@DisplayName("GET /api/service-descriptions returns route descriptions")
 	void getServiceDescriptionsReturnsList() throws Exception {
 		when(nusApiService.getServiceDescriptions()).thenReturn(List.of(
-				new ServiceDescription("A1", "KRT > PGP > KR MRT > CLB > KRT")
+				new ServiceDescription("A1", "KRT > PGP > KR MRT > CLB > KRT", "A1")
 		));
 
 		mockMvc.perform(get("/api/service-descriptions"))
@@ -143,7 +151,7 @@ class BackendApplicationTests {
 	@DisplayName("GET /api/pickup-points?route=... returns pickup points")
 	void getPickupPointsReturnsList() throws Exception {
 		when(nusApiService.getPickupPoints("A1")).thenReturn(List.of(
-				new PickupPoint("KRB-A1-S", "Kent Ridge Bus Terminal", "KR Bus Ter", 1.294068, 103.769836, "Kent Ridge Bus Terminal", 90287)
+				new PickupPoint(1, "KRB-A1-S", "Kent Ridge Bus Terminal", "KR Bus Ter", 1.294068, 103.769836, "Kent Ridge Bus Terminal", 90287)
 		));
 
 		mockMvc.perform(get("/api/pickup-points").param("route", "A1"))
@@ -246,6 +254,57 @@ class BackendApplicationTests {
 		mockMvc.perform(get("/api/buildings/{name}/nearest-stop", "Unknown Hall"))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.error").value("Building not found: Unknown Hall"));
+	}
+
+	@Test
+	@DisplayName("GET /api/nearby-stops returns nearby stops by geolocation")
+	void getNearbyStopsReturnsList() throws Exception {
+		when(routingService.getNearbyStops(1.2945, 103.7750, 800, 5)).thenReturn(List.of(
+				new NearbyStopResult("COM3", "COM 3", 1.294431, 103.775217, 73.0, 2)
+		));
+
+		mockMvc.perform(get("/api/nearby-stops")
+				.param("lat", "1.2945")
+				.param("lng", "103.7750")
+				.param("radius", "800")
+				.param("limit", "5"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].stopName").value("COM3"))
+				.andExpect(jsonPath("$[0].walkingMinutes").value(2));
+	}
+
+	@Test
+	@DisplayName("GET /api/route returns a planned route with legs")
+	void getRouteReturnsPlan() throws Exception {
+		when(routingService.planRoute("COM3", "UTown")).thenReturn(new RoutePlanResult(
+				"COM3",
+				"UTown",
+				18,
+				4,
+				5,
+				9,
+				0,
+				List.of(new RouteLeg("BUS", "A1 from COM 3 to University Town", 9, "A1",
+						"COM 3", "University Town", 1.294431, 103.775217, 1.303876, 103.774621))
+		));
+
+		mockMvc.perform(get("/api/route").param("from", "COM3").param("to", "UTown"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.totalMinutes").value(18))
+				.andExpect(jsonPath("$.legs[0].mode").value("BUS"));
+	}
+
+	@Test
+	@DisplayName("GET /api/weather returns weather snapshot for current location")
+	void getWeatherReturnsSnapshot() throws Exception {
+		when(weatherService.getWeather(1.2966, 103.7764)).thenReturn(new WeatherSnapshot(
+				"Asia/Singapore", "2026-03-04T18:15", 27.0, 80, 0.4, 6.6, 48
+		));
+
+		mockMvc.perform(get("/api/weather").param("lat", "1.2966").param("lng", "103.7764"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.temperatureCelsius").value(27.0))
+				.andExpect(jsonPath("$.nextHourPrecipitationProbability").value(48));
 	}
 
 }

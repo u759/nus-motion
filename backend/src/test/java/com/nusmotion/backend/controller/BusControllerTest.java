@@ -4,6 +4,8 @@ import com.nusmotion.backend.dto.Announcement;
 import com.nusmotion.backend.dto.CheckPoint;
 import com.nusmotion.backend.dto.RouteSchedule;
 import com.nusmotion.backend.service.NusApiService;
+import com.nusmotion.backend.service.RoutingService;
+import com.nusmotion.backend.service.WeatherService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,12 +21,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BusControllerTest {
 
     private NusApiService nusApiService;
+        private RoutingService routingService;
+        private WeatherService weatherService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         nusApiService = mock(NusApiService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new BusController(nusApiService)).build();
+                routingService = mock(RoutingService.class);
+                weatherService = mock(WeatherService.class);
+                mockMvc = MockMvcBuilders.standaloneSetup(new BusController(nusApiService, routingService, weatherService)).build();
     }
 
     @Test

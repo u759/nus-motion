@@ -7,5 +7,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public record ServiceDescription(
         @JsonProperty("Route") String route,
-        @JsonProperty("RouteDescription") String routeDescription
+        @JsonProperty("RouteDescription") String routeDescription,
+        @JsonProperty("RouteLongName") String routeLongName
 ) {}

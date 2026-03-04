@@ -3,12 +3,15 @@ package com.nusmotion.backend.controller;
 import com.nusmotion.backend.dto.*;
 import com.nusmotion.backend.dto.Wrappers.ShuttleServiceResult;
 import com.nusmotion.backend.service.NusApiService;
+import com.nusmotion.backend.service.RoutingService;
+import com.nusmotion.backend.service.WeatherService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST controller that exposes the proxied NUS bus data to the Flutter frontend.
@@ -39,9 +42,15 @@ import java.util.List;
 public class BusController {
 
     private final NusApiService nusApiService;
+    private final RoutingService routingService;
+    private final WeatherService weatherService;
 
-    public BusController(NusApiService nusApiService) {
+    public BusController(NusApiService nusApiService,
+                         RoutingService routingService,
+                         WeatherService weatherService) {
         this.nusApiService = nusApiService;
+        this.routingService = routingService;
+        this.weatherService = weatherService;
     }
 
     @GetMapping("/stops")
@@ -122,5 +131,43 @@ public class BusController {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body("{\"error\":\"Upstream /BusLocation unavailable\",\"upstreamStatus\":" + e.getStatusCode().value() + "}");
         }
+    }
+
+    /**
+     * Nearby stops by geolocation.
+     */
+    @GetMapping("/nearby-stops")
+    public List<NearbyStopResult> getNearbyStops(
+            @RequestParam("lat") double latitude,
+            @RequestParam("lng") double longitude,
+            @RequestParam(value = "radius", defaultValue = "800") int radiusMeters,
+            @RequestParam(value = "limit", defaultValue = "5") int limit) {
+        return routingService.getNearbyStops(latitude, longitude, radiusMeters, limit);
+    }
+
+    /**
+     * Route planning between two searched places (bus stop/building).
+     */
+    @GetMapping("/route")
+    public ResponseEntity<?> getRoute(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to) {
+        try {
+            return ResponseEntity.ok(routingService.planRoute(from, to));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(422).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Weather summary from Open-Meteo based on current location.
+     */
+    @GetMapping("/weather")
+    public WeatherSnapshot getWeather(
+            @RequestParam("lat") double latitude,
+            @RequestParam("lng") double longitude) {
+        return weatherService.getWeather(latitude, longitude);
     }
 }

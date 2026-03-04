@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * Pickup point for a route from /PickupPoint.
  */
 public record PickupPoint(
+        @JsonProperty("seq") int seq,
         @JsonProperty("busstopcode") String busstopcode,
         @JsonProperty("LongName") String longName,
         @JsonProperty("ShortName") String shortName,
