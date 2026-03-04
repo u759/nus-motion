@@ -57,8 +57,20 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
           lng: _queryLocation.longitude,
         )),
       );
+      // Collect route codes from cached shuttle data before invalidating
+      final routeCodes = <String>{};
       for (final name in _visibleStopNames) {
+        final shuttleData = ref.read(shuttlesProvider(name));
+        shuttleData.whenData((result) {
+          for (final shuttle in result.shuttles) {
+            routeCodes.add(shuttle.name);
+          }
+        });
         ref.invalidate(shuttlesProvider(name));
+      }
+      // Refresh active buses for all visible routes (capacity data)
+      for (final route in routeCodes) {
+        ref.invalidate(activeBusesProvider(route));
       }
       if (_overlayRouteCode != null) {
         ref.invalidate(activeBusesProvider(_overlayRouteCode!));
