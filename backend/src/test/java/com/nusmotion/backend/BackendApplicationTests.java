@@ -87,7 +87,7 @@ class BackendApplicationTests {
 	@DisplayName("GET /api/active-buses?route=... returns active bus positions")
 	void getActiveBusesReturnsActiveBusList() throws Exception {
 		when(nusApiService.getActiveBuses("A1")).thenReturn(List.of(
-				new ActiveBus("SBA1234A", 1.2966, 103.7764, 32, 90)
+				new ActiveBus("SBA1234A", 1.2966, 103.7764, 32, 90, null)
 		));
 
 		mockMvc.perform(get("/api/active-buses").param("route", "A1"))

@@ -12,5 +12,17 @@ public record ActiveBus(
         @JsonProperty("lat") double lat,
         @JsonProperty("lng") double lng,
         @JsonProperty("speed") int speed,
-        @JsonProperty("direction") double direction
-) {}
+        @JsonProperty("direction") double direction,
+        @JsonProperty("loadInfo") LoadInfo loadInfo
+) {
+
+    /**
+     * Real-time passenger load information for a bus.
+     */
+    public record LoadInfo(
+            @JsonProperty("occupancy") double occupancy,
+            @JsonProperty("crowdLevel") String crowdLevel,
+            @JsonProperty("capacity") int capacity,
+            @JsonProperty("ridership") int ridership
+    ) {}
+}

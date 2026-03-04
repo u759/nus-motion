@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-void main() {
-  runApp(const MainApp());
-}
+import 'package:frontend/app/app.dart';
+import 'package:frontend/core/storage/local_storage.dart';
+import 'package:frontend/state/providers.dart';
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
-    );
-  }
+  final localStorage = LocalStorage();
+  await localStorage.init();
+
+  runApp(
+    ProviderScope(
+      overrides: [localStorageProvider.overrideWithValue(localStorage)],
+      child: const App(),
+    ),
+  );
 }

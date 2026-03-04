@@ -1,5 +1,5 @@
 name: frontend
-description: "A new Flutter project."
+description: "NUS Motion - Real-time Transit App"
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -9,6 +9,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+  dio: ^5.8.0+1
+  go_router: ^15.1.2
+  google_maps_flutter: ^2.12.1
+  hive_flutter: ^1.1.0
+  hive: ^2.2.3
+  geolocator: ^13.0.2
+  intl: ^0.20.2
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:
