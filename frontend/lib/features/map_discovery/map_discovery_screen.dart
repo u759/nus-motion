@@ -476,6 +476,8 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
+            rotateGesturesEnabled: false,
+            tiltGesturesEnabled: false,
             padding: EdgeInsets.only(top: mapTopPadding, bottom: _panelHeight),
             polylines: _buildPolylines(),
             markers: _buildMarkers(),
