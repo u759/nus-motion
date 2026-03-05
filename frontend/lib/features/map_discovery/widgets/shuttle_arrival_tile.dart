@@ -31,7 +31,7 @@ class ShuttleArrivalTile extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: eta == 'Arriving'
                         ? AppColors.success
-                        : AppColors.textPrimary,
+                        : AppColors.primary,
                   ),
                 ),
                 if (nextEta != 'N/A') ...[
@@ -47,6 +47,15 @@ class ShuttleArrivalTile extends StatelessWidget {
               ],
             ),
           ),
+          if (shuttle.towards != null)
+            Text(
+              shuttle.towards!,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          if (shuttle.towards != null) const SizedBox(width: 8),
           CapacityIndicator(passengers: shuttle.passengers),
         ],
       ),

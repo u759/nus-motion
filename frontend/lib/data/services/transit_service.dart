@@ -111,13 +111,15 @@ class TransitService {
         .toList(),
   );
 
-  Future<RoutePlanResult> getRoute({
+  Future<List<RoutePlanResult>> getRoute({
     required String from,
     required String to,
   }) => _client.get(
     '/route',
     queryParameters: {'from': from, 'to': to},
-    parser: (data) => RoutePlanResult.fromJson(data as Map<String, dynamic>),
+    parser: (data) => (data as List)
+        .map((e) => RoutePlanResult.fromJson(e as Map<String, dynamic>))
+        .toList(),
   );
 
   Future<WeatherSnapshot> getWeather({

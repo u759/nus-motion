@@ -57,7 +57,7 @@ class _ActiveTransitScreenState extends ConsumerState<ActiveTransitScreen> {
   }
 
   void _startPolling() {
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       final route = _activeBusRoute;
       if (route != null) {

@@ -6,6 +6,7 @@ class Shuttle {
   final String nextArrivalTimeVehPlate;
   final String passengers;
   final String nextPassengers;
+  final String? towards;
 
   const Shuttle({
     required this.name,
@@ -15,6 +16,7 @@ class Shuttle {
     required this.nextArrivalTimeVehPlate,
     required this.passengers,
     required this.nextPassengers,
+    this.towards,
   });
 
   factory Shuttle.fromJson(Map<String, dynamic> json) => Shuttle(
@@ -25,6 +27,7 @@ class Shuttle {
     nextArrivalTimeVehPlate: json['nextArrivalTime_veh_plate'] as String? ?? '',
     passengers: json['passengers'] as String? ?? '-',
     nextPassengers: json['nextPassengers'] as String? ?? '-',
+    towards: json['towards'] as String?,
   );
 }
 

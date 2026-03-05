@@ -21,7 +21,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   @override
   void initState() {
     super.initState();
-    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       // Invalidate shuttle providers for visible favorite stops
       for (final stop in ref.read(favoriteStopsProvider)) {

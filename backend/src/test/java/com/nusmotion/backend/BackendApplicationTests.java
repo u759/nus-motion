@@ -76,11 +76,17 @@ class BackendApplicationTests {
 		Shuttle shuttle = new Shuttle("A1", "2 min", "SBA1234A", "8 min", "SBA8888B", "SEA", "LSD");
 		when(nusApiService.getShuttleService(eq("COM3")))
 				.thenReturn(new ShuttleServiceResult("COM3", "COM 3", List.of(shuttle)));
+		when(nusApiService.getPickupPoints("A1")).thenReturn(List.of(
+				new PickupPoint(1, "COM3-A1-S", "COM 3", "COM 3", 1.29, 103.77, "COM 3", 1),
+				new PickupPoint(2, "KR-MRT", "Kent Ridge MRT", "KR MRT", 1.29, 103.78, "KR MRT", 1),
+				new PickupPoint(3, "PGP", "Prince George's Park", "PGP", 1.29, 103.79, "PGP", 1)
+		));
 
 		mockMvc.perform(get("/api/shuttles").param("stop", "COM3"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("COM3"))
-				.andExpect(jsonPath("$.shuttles[0].name").value("A1"));
+				.andExpect(jsonPath("$.shuttles[0].name").value("A1"))
+				.andExpect(jsonPath("$.shuttles[0].towards").value("PGP"));
 	}
 
 	@Test
@@ -274,9 +280,9 @@ class BackendApplicationTests {
 	}
 
 	@Test
-	@DisplayName("GET /api/route returns a planned route with legs")
+	@DisplayName("GET /api/route returns planned routes with legs")
 	void getRouteReturnsPlan() throws Exception {
-		when(routingService.planRoute("COM3", "UTown")).thenReturn(new RoutePlanResult(
+		when(routingService.planRoutes("COM3", "UTown")).thenReturn(List.of(new RoutePlanResult(
 				"COM3",
 				"UTown",
 				18,
@@ -286,12 +292,12 @@ class BackendApplicationTests {
 				0,
 				List.of(new RouteLeg("BUS", "A1 from COM 3 to University Town", 9, "A1",
 						"COM 3", "University Town", 1.294431, 103.775217, 1.303876, 103.774621))
-		));
+		)));
 
 		mockMvc.perform(get("/api/route").param("from", "COM3").param("to", "UTown"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.totalMinutes").value(18))
-				.andExpect(jsonPath("$.legs[0].mode").value("BUS"));
+				.andExpect(jsonPath("$[0].totalMinutes").value(18))
+				.andExpect(jsonPath("$[0].legs[0].mode").value("BUS"));
 	}
 
 	@Test

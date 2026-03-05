@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -59,8 +60,54 @@ public class BusController {
     }
 
     @GetMapping("/shuttles")
-    public ShuttleServiceResult getShuttles(@RequestParam("stop") String busstopname) {
-        return nusApiService.getShuttleService(busstopname);
+    public Map<String, Object> getShuttles(@RequestParam("stop") String busstopname) {
+        ShuttleServiceResult raw = nusApiService.getShuttleService(busstopname);
+        if (raw == null) {
+            return Map.of("name", busstopname, "caption", busstopname, "shuttles", List.of());
+        }
+        List<EnrichedShuttle> enriched = raw.shuttles().stream().map(s -> {
+            String towards = computeTowards(busstopname, s.name());
+            return EnrichedShuttle.from(s, towards);
+        }).toList();
+        return Map.of("name", raw.name(), "caption", raw.caption(), "shuttles", enriched);
+    }
+
+    /**
+     * Determine the "towards" destination for a shuttle route at a given stop.
+     * Uses the route's ordered pickup-point sequence: finds the current stop,
+     * then returns the last stop in the remaining sequence as the destination label.
+     */
+    private String computeTowards(String stopName, String routeCode) {
+        try {
+            List<PickupPoint> points = nusApiService.getPickupPoints(routeCode);
+            if (points == null || points.isEmpty()) return null;
+
+            // Filter out terminal marker (seq=32767)
+            List<PickupPoint> stops = points.stream()
+                    .filter(p -> p.seq() != 32767)
+                    .sorted((a, b) -> Integer.compare(a.seq(), b.seq()))
+                    .toList();
+
+            // Find current stop index by matching busstopcode prefix or ShortName
+            int currentIdx = -1;
+            String upperStop = stopName.toUpperCase();
+            for (int i = 0; i < stops.size(); i++) {
+                String code = stops.get(i).busstopcode().toUpperCase();
+                if (code.equals(upperStop) || code.startsWith(upperStop + "-")) {
+                    currentIdx = i;
+                    break;
+                }
+            }
+            if (currentIdx < 0) return null;
+
+            // Last stop in the route after current position
+            int lastIdx = stops.size() - 1;
+            if (lastIdx <= currentIdx) return null;
+
+            return stops.get(lastIdx).shortName();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @GetMapping("/active-buses")
@@ -147,13 +194,14 @@ public class BusController {
 
     /**
      * Route planning between two searched places (bus stop/building).
+     * Returns up to 5 route options sorted by total time.
      */
     @GetMapping("/route")
     public ResponseEntity<?> getRoute(
             @RequestParam("from") String from,
             @RequestParam("to") String to) {
         try {
-            return ResponseEntity.ok(routingService.planRoute(from, to));
+            return ResponseEntity.ok(routingService.planRoutes(from, to));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         } catch (IllegalStateException e) {

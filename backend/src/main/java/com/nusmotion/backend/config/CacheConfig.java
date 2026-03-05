@@ -17,7 +17,7 @@ import java.time.Duration;
  *   with @Cacheable("name") will check this cache first and skip execution
  *   if a cached value exists for the same key.
  * - TTL (time-to-live) controls how long data is considered "fresh".
- *   For real-time bus data we keep it short (10 s); for static data like
+ *   For real-time bus data we keep it short (5 s); for static data like
  *   bus stops we cache longer (5 min).
  * - maximumSize prevents unbounded memory growth.
  */
@@ -60,13 +60,13 @@ public class CacheConfig {
 
         manager.registerCustomCache("shuttleService",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(10))
+                .expireAfterWrite(Duration.ofSeconds(5))
                 .maximumSize(200)
                 .build());
 
         manager.registerCustomCache("activeBuses",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(10))
+                .expireAfterWrite(Duration.ofSeconds(5))
                 .maximumSize(50)
                 .build());
 

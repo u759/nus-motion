@@ -1,11 +1,8 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:frontend/app/theme.dart';
-import 'package:frontend/core/constants/app_constants.dart';
 import 'package:frontend/core/widgets/loading_shimmer.dart';
 import 'package:frontend/core/widgets/error_card.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
@@ -24,7 +21,6 @@ class SearchRoutingScreen extends ConsumerStatefulWidget {
 }
 
 class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
-  GoogleMapController? _mapController;
   String _origin = 'Current Location';
   String _destination = '';
   bool _isSearching = false;
@@ -41,30 +37,29 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
     final buildings = ref.watch(buildingsProvider);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Background map
-          GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(
-                AppConstants.nusLatitude,
-                AppConstants.nusLongitude,
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          children: [
+            // Header
+            const Text(
+              'Plan Your Trip',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
               ),
-              zoom: AppConstants.defaultZoom,
             ),
-            onMapCreated: (controller) => _mapController = controller,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-          ),
+            const SizedBox(height: 4),
+            const Text(
+              'Find the best route across NUS',
+              style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
 
-          // Floating input card
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 16,
-            right: 16,
-            child: FromToInput(
+            // From/To input
+            FromToInput(
               origin: _origin,
               destination: _destination,
               onOriginChanged: (val) {
@@ -95,42 +90,33 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
               },
               onSubmit: _computeRoute,
             ),
-          ),
+            const SizedBox(height: 16),
 
-          // Autocomplete suggestions overlay
-          if (_isSearching)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 140,
-              left: 16,
-              right: 16,
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 260),
+            // Autocomplete suggestions (inline)
+            if (_isSearching && _suggestions.isNotEmpty)
+              Container(
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: ListView.separated(
                   shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _suggestions.length,
                   separatorBuilder: (_, __) =>
                       const Divider(height: 1, indent: 52),
                   itemBuilder: (context, index) {
                     final name = _suggestions[index];
+                    final isCurrent = name == 'Current Location';
                     return ListTile(
                       dense: true,
                       leading: Icon(
-                        name == 'Current Location'
+                        isCurrent
                             ? Icons.my_location
                             : Icons.location_on_outlined,
-                        color: name == 'Current Location'
+                        color: isCurrent
                             ? AppColors.primary
                             : AppColors.textMuted,
                         size: 20,
@@ -139,7 +125,7 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                         name,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: name == 'Current Location'
+                          fontWeight: isCurrent
                               ? FontWeight.w600
                               : FontWeight.w400,
                           color: AppColors.textPrimary,
@@ -150,103 +136,124 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                   },
                 ),
               ),
-            ),
 
-          // Route results bottom sheet
-          if (_showResults)
-            DraggableScrollableSheet(
-              initialChildSize: 0.4,
-              minChildSize: 0.15,
-              maxChildSize: 0.75,
-              snap: true,
-              snapSizes: const [0.15, 0.4, 0.75],
-              builder: (context, scrollController) {
-                final routeResult = ref.watch(
-                  routeProvider((
-                    from: _resolvedOrigin,
-                    to: _resolvedDestination,
-                  )),
-                );
-                return Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(24),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, -4),
-                      ),
-                    ],
-                  ),
-                  child: ListView(
-                    controller: scrollController,
-                    padding: EdgeInsets.zero,
+            // Resolving indicator
+            if (_resolving)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(
+                  child: Column(
                     children: [
-                      Center(
-                        child: Container(
-                          margin: const EdgeInsets.only(top: 12, bottom: 8),
-                          width: 48,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: AppColors.border,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: AppColors.primary,
                         ),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          'Suggested Routes',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
+                      SizedBox(height: 12),
+                      Text(
+                        'Getting your location\u2026',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                      routeResult.when(
-                        data: (result) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: RouteSummaryCard(
-                            route: result,
-                            isSelected: true,
-                            onTap: () {
-                              context.go(
-                                '/search/detail',
-                                extra: {
-                                  'route': result,
-                                  'origin': _origin,
-                                  'destination': _destination,
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                        loading: () => const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: ShimmerList(itemCount: 2, itemHeight: 90),
-                        ),
-                        error: (error, _) => Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: ErrorCard(
-                            message: error.toString(),
-                            onRetry: () => ref.invalidate(routeProvider),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
-                );
-              },
+                ),
+              ),
+
+            // Route results
+            if (_showResults && !_resolving) _buildResults(),
+
+            // Empty state (before any search)
+            if (!_isSearching && !_showResults && !_resolving)
+              const Padding(
+                padding: EdgeInsets.only(top: 48),
+                child: EmptyState(
+                  icon: Icons.directions_bus,
+                  title: 'Search for a route',
+                  subtitle:
+                      'Enter an origin and destination above to find '
+                      'the best way to get around NUS',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResults() {
+    final routeResult = ref.watch(
+      routeProvider((from: _resolvedOrigin, to: _resolvedDestination)),
+    );
+
+    return routeResult.when(
+      data: (routes) {
+        if (routes.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 32),
+            child: EmptyState(
+              icon: Icons.route,
+              title: 'No routes found',
+              subtitle: 'Try a different origin or destination',
             ),
-        ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            const Text(
+              'Suggested Routes',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${routes.length} option${routes.length != 1 ? 's' : ''} found',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            for (int i = 0; i < routes.length; i++)
+              RouteSummaryCard(
+                key: ValueKey('route-$i'),
+                route: routes[i],
+                isSelected: i == 0,
+                onTap: () {
+                  context.go(
+                    '/search/detail',
+                    extra: {
+                      'route': routes[i],
+                      'origin': _origin,
+                      'destination': _destination,
+                    },
+                  );
+                },
+              ),
+            const SizedBox(height: 24),
+          ],
+        );
+      },
+      loading: () => const Padding(
+        padding: EdgeInsets.only(top: 16),
+        child: ShimmerList(itemCount: 3, itemHeight: 90),
+      ),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: ErrorCard(
+          message: error.toString(),
+          onRetry: () => ref.invalidate(routeProvider),
+        ),
       ),
     );
   }
@@ -302,7 +309,7 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
     String from = _origin;
     String to = _destination;
 
-    // Resolve "Current Location" to GPS coordinates (backend handles stop-finding)
+    // Resolve "Current Location" to GPS coordinates
     if (from == 'Current Location' || to == 'Current Location') {
       setState(() => _resolving = true);
       try {
@@ -311,11 +318,12 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
         if (from == 'Current Location') from = coords;
         if (to == 'Current Location') to = coords;
       } catch (_) {
-        setState(() => _resolving = false);
+        if (mounted) setState(() => _resolving = false);
         return;
       }
     }
 
+    if (!mounted) return;
     setState(() {
       _resolvedOrigin = from;
       _resolvedDestination = to;

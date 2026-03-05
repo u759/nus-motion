@@ -71,7 +71,7 @@ public class RoutingService {
     }
 
     @Cacheable(value = "routePlans", key = "#from + '|' + #to")
-    public RoutePlanResult planRoute(String from, String to) {
+    public List<RoutePlanResult> planRoutes(String from, String to) {
         Location origin = resolveLocation(from);
         Location destination = resolveLocation(to);
 
@@ -89,7 +89,7 @@ public class RoutingService {
 
         Map<String, RoutePath> routePaths = buildRoutePaths(allStops);
 
-        PlanCandidate best = null;
+        List<PlanCandidate> candidates = new ArrayList<>();
 
         // 1) Try direct routes (0 transfer)
         for (RoutePath path : routePaths.values()) {
@@ -109,8 +109,7 @@ public class RoutingService {
                     int total = walkOrigin + wait + bus + walkDest;
                     List<RouteLeg> legs = buildDirectLegs(path.routeCode, o, d, walkOrigin, wait, bus, walkDest);
 
-                    PlanCandidate candidate = new PlanCandidate(total, walkOrigin + walkDest, wait, bus, 0, legs);
-                    if (isBetter(candidate, best)) best = candidate;
+                    candidates.add(new PlanCandidate(total, walkOrigin + walkDest, wait, bus, 0, legs));
                 }
             }
         }
@@ -147,29 +146,43 @@ public class RoutingService {
                             List<RouteLeg> legs = buildTransferLegs(pathA.routeCode, pathB.routeCode, o, d,
                                     transferStopName, walkOrigin, waitA, busA, waitB, busB, walkDest);
 
-                            PlanCandidate candidate = new PlanCandidate(total, walkOrigin + walkDest, waitA + waitB,
-                                    busA + busB, 1, legs);
-                            if (isBetter(candidate, best)) best = candidate;
+                            candidates.add(new PlanCandidate(total, walkOrigin + walkDest, waitA + waitB,
+                                    busA + busB, 1, legs));
                         }
                     }
                 }
             }
         }
 
-        if (best == null) {
+        if (candidates.isEmpty()) {
             throw new IllegalStateException("No route could be computed with current data");
         }
 
-        return new RoutePlanResult(
-                origin.name,
-                destination.name,
-                best.totalMinutes,
-                best.walkingMinutes,
-                best.waitingMinutes,
-                best.busMinutes,
-                best.transfers,
-                best.legs
-        );
+        // Deduplicate by route signature (same route codes in same order) and keep the best per signature
+        Map<String, PlanCandidate> bestPerSignature = new LinkedHashMap<>();
+        candidates.sort(Comparator.comparingInt(c -> c.totalMinutes));
+        for (PlanCandidate c : candidates) {
+            String sig = c.legs.stream()
+                    .filter(l -> "BUS".equals(l.mode()))
+                    .map(RouteLeg::routeCode)
+                    .collect(Collectors.joining(">"));
+            bestPerSignature.putIfAbsent(sig, c);
+        }
+
+        return bestPerSignature.values().stream()
+                .sorted(Comparator.comparingInt(c -> c.totalMinutes))
+                .limit(5)
+                .map(c -> new RoutePlanResult(
+                        origin.name,
+                        destination.name,
+                        c.totalMinutes,
+                        c.walkingMinutes,
+                        c.waitingMinutes,
+                        c.busMinutes,
+                        c.transfers,
+                        c.legs
+                ))
+                .toList();
     }
 
     private List<RouteLeg> buildDirectLegs(String routeCode, CandidateStop originStop, CandidateStop destinationStop,
@@ -273,12 +286,6 @@ public class RoutingService {
         }
 
         return legs;
-    }
-
-    private boolean isBetter(PlanCandidate candidate, PlanCandidate currentBest) {
-        if (candidate == null) return false;
-        if (currentBest == null) return true;
-        return candidate.totalMinutes < currentBest.totalMinutes;
     }
 
     private int estimateBusTravelMinutes(RoutePath path, int startIndex, int endIndex) {

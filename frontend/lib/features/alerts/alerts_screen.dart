@@ -243,7 +243,9 @@ class _AlertsList extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ...current.map((a) => AlertCard(announcement: a)),
+                  ...current.map(
+                    (a) => AlertCard(key: ValueKey(a.id), announcement: a),
+                  ),
                 ],
                 if (past.isNotEmpty) ...[
                   const SizedBox(height: 24),
@@ -259,6 +261,7 @@ class _AlertsList extends StatelessWidget {
                   const SizedBox(height: 12),
                   ...past.map(
                     (a) => Opacity(
+                      key: ValueKey(a.id),
                       opacity: 0.6,
                       child: AlertCard(announcement: a, isResolved: true),
                     ),
@@ -289,7 +292,9 @@ class _AlertsList extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                ...tapes.map((t) => _TickerCard(tape: t)),
+                ...tapes.map(
+                  (t) => _TickerCard(key: ValueKey(t.message), tape: t),
+                ),
               ],
             );
           },
@@ -305,7 +310,7 @@ class _AlertsList extends StatelessWidget {
 
 class _TickerCard extends StatelessWidget {
   final TickerTape tape;
-  const _TickerCard({required this.tape});
+  const _TickerCard({super.key, required this.tape});
 
   @override
   Widget build(BuildContext context) {

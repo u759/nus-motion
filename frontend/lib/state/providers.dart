@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:frontend/core/network/api_client.dart';
@@ -101,7 +102,7 @@ final nearbyStopsProvider =
     });
 
 final routeProvider =
-    FutureProvider.family<RoutePlanResult, ({String from, String to})>((
+    FutureProvider.family<List<RoutePlanResult>, ({String from, String to})>((
       ref,
       params,
     ) {
@@ -120,6 +121,45 @@ final weatherProvider =
           .getWeather(lat: params.lat, lng: params.lng);
     });
 
+/// All bus stops sorted by distance from a given position, as NearbyStopResult.
+final allStopsSortedByDistanceProvider =
+    FutureProvider.family<List<NearbyStopResult>, ({double lat, double lng})>((
+      ref,
+      params,
+    ) async {
+      final stops = await ref.watch(stopsProvider.future);
+      final results = stops.map((stop) {
+        final distance = _haversine(
+          params.lat,
+          params.lng,
+          stop.latitude,
+          stop.longitude,
+        );
+        return NearbyStopResult(
+          stopName: stop.name,
+          stopDisplayName: stop.longName.isNotEmpty ? stop.longName : stop.name,
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+          distanceMeters: distance,
+          walkingMinutes: (distance / 80).ceil(),
+        );
+      }).toList()..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+      return results;
+    });
+
+double _haversine(double lat1, double lng1, double lat2, double lng2) {
+  const R = 6371000.0;
+  final dLat = (lat2 - lat1) * pi / 180;
+  final dLng = (lng2 - lng1) * pi / 180;
+  final a =
+      sin(dLat / 2) * sin(dLat / 2) +
+      cos(lat1 * pi / 180) *
+          cos(lat2 * pi / 180) *
+          sin(dLng / 2) *
+          sin(dLng / 2);
+  return R * 2 * atan2(sqrt(a), sqrt(1 - a));
+}
+
 // -- Non-parameterized feeds --
 final announcementsProvider = FutureProvider<List<Announcement>>((ref) {
   return ref.watch(transitServiceProvider).getAnnouncements();
@@ -127,6 +167,26 @@ final announcementsProvider = FutureProvider<List<Announcement>>((ref) {
 
 final tickerTapesProvider = FutureProvider<List<TickerTape>>((ref) {
   return ref.watch(transitServiceProvider).getTickerTapes();
+});
+
+/// All active buses across every known route, keyed by route code.
+final allActiveBusesProvider = FutureProvider<Map<String, List<ActiveBus>>>((
+  ref,
+) async {
+  final service = ref.watch(transitServiceProvider);
+  final descriptions = await ref.watch(serviceDescriptionsProvider.future);
+  final routes = descriptions.map((d) => d.route).toList();
+  final results = <String, List<ActiveBus>>{};
+  await Future.wait(
+    routes.map((route) async {
+      try {
+        results[route] = await service.getActiveBuses(route);
+      } catch (_) {
+        results[route] = [];
+      }
+    }),
+  );
+  return results;
 });
 
 // -- Local persistence notifiers --
