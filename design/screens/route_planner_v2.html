@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Route Planner</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-light": "#ffffff",
+                        "background-dark": "#131022",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.5rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased font-display">
+<div class="relative flex h-screen w-full flex-col overflow-hidden max-w-md mx-auto border-x border-slate-200 dark:border-primary/20">
+<!-- Header -->
+<header class="flex items-center bg-white p-4 pb-2 justify-between border-b border-slate-200 sticky top-0 z-10">
+<div class="text-slate-900 dark:text-slate-100 flex size-10 shrink-0 items-center justify-center cursor-pointer">
+<span class="material-symbols-outlined">arrow_back</span>
+</div>
+<div class="flex-1 px-4">
+<h1 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">Route to Work</h1>
+<p class="text-xs text-slate-500 font-medium">Leave now from Current Location</p>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex size-10 cursor-pointer items-center justify-center rounded-lg bg-slate-100 text-slate-900">
+<span class="material-symbols-outlined">tune</span>
+</button>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 overflow-y-auto no-scrollbar">
+<!-- Map Preview (Small) -->
+<div class="px-4 py-3">
+<div class="relative w-full h-32 rounded-xl overflow-hidden bg-slate-200 dark:bg-primary/20 border border-slate-200 dark:border-primary/30">
+<div class="absolute inset-0 bg-cover bg-center opacity-80" data-alt="Transit map showing city streets and metro lines" data-location="Berlin, Germany" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBJQJlG27W2g6G23CPDoW72sYwPRPBlaita0hNJi7v-ywRAJtMo2f4OREEpgmic584TfnGR3oklH6p6fn2rdfYhq7oE0rJVlqgf-cHB1l6fesC1KzRy9D4dF0vdFiGw0oh3vJq4NW0XMlBlgno3og6rC25w6DtAUfDnXm6_Ws1fa5k77V49jwCdHirk80xq9nUO1c2Jos9CLZBetobwZFFGnYeGYXiuF2hHlJW1UI4e0A3I9O0hpt8YRfcFkA8cowTTFC1pwvEOhYs');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-white/40 to-transparent"></div>
+<div class="absolute bottom-3 left-3 flex gap-2">
+<span class="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase">Live Traffic</span>
+</div>
+</div>
+</div>
+<!-- Tabs -->
+<div class="sticky top-0 z-10 bg-white/95 backdrop-blur-sm">
+<div class="flex border-b border-slate-200 px-4 overflow-x-auto no-scrollbar">
+<button class="flex shrink-0 flex-col items-center justify-center border-b-2 border-primary text-primary pb-3 pt-4 px-2">
+<p class="text-sm font-bold tracking-tight">Fastest</p>
+<p class="text-[10px] opacity-70">14 min</p>
+</button>
+<button class="flex shrink-0 flex-col items-center justify-center border-b-2 border-transparent text-slate-400 pb-3 pt-4 px-4">
+<p class="text-sm font-bold tracking-tight">Fewest Transfers</p>
+<p class="text-[10px] opacity-70">18 min</p>
+</button>
+<button class="flex shrink-0 flex-col items-center justify-center border-b-2 border-transparent text-slate-400 pb-3 pt-4 px-4">
+<p class="text-sm font-bold tracking-tight">Least Walking</p>
+<p class="text-[10px] opacity-70">22 min</p>
+</button>
+</div>
+</div>
+<!-- Route List -->
+<div class="p-4 space-y-4">
+<!-- Route Card 1: Dense Detail -->
+<div class="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+<div class="p-4 bg-primary/5 border-b border-slate-100 flex justify-between items-center">
+<div>
+<p class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-none">14 min • 08:42 — 08:56</p>
+<p class="text-emerald-600 text-xs font-semibold mt-1 flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">sensors</span> Real-time: On time
+                            </p>
+</div>
+<div class="flex items-center -space-x-2">
+<span class="size-8 rounded-full bg-primary flex items-center justify-center text-white ring-2 ring-white">
+<span class="material-symbols-outlined text-sm">directions_subway</span>
+</span>
+<span class="size-8 rounded-full bg-slate-600 flex items-center justify-center text-white ring-2 ring-white">
+<span class="material-symbols-outlined text-sm">directions_walk</span>
+</span>
+</div>
+</div>
+<div class="p-4 space-y-4">
+<!-- Step 1 -->
+<div class="grid grid-cols-[32px_1fr] gap-x-3">
+<div class="flex flex-col items-center gap-1">
+<div class="size-8 rounded-full bg-slate-100 flex items-center justify-center">
+<span class="material-symbols-outlined text-lg text-slate-500">directions_walk</span>
+</div>
+<div class="w-0.5 bg-slate-200 grow min-h-[20px]"></div>
+</div>
+<div class="pb-2">
+<p class="text-slate-900 dark:text-slate-100 text-sm font-semibold">Walk to Central Square</p>
+<p class="text-slate-500 text-xs">2 min • 150m • Main St exit</p>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="grid grid-cols-[32px_1fr] gap-x-3">
+<div class="flex flex-col items-center gap-1">
+<div class="size-8 rounded-full bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-lg">subway</span>
+</div>
+<div class="w-0.5 bg-slate-200 grow min-h-[20px]"></div>
+</div>
+<div class="pb-2">
+<div class="flex justify-between">
+<p class="text-slate-900 dark:text-slate-100 text-sm font-semibold">U2 Line <span class="text-xs font-normal text-slate-500">toward Pankow</span></p>
+<span class="text-primary text-[10px] font-bold border border-primary/30 px-1.5 rounded h-4 flex items-center">PLATFORM 3</span>
+</div>
+<p class="text-slate-500 text-xs">9 min • 4 stops • Next at 08:44</p>
+<div class="mt-2 bg-slate-50 p-2 rounded text-[11px] text-slate-600 border border-slate-100">
+                                    Crowd level: <span class="text-orange-500 font-bold">Moderate</span> • Quiet zones available
+                                </div>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="grid grid-cols-[32px_1fr] gap-x-3">
+<div class="flex flex-col items-center gap-1">
+<div class="size-8 rounded-full border-2 border-primary flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">location_on</span>
+</div>
+</div>
+<div>
+<p class="text-slate-900 dark:text-slate-100 text-sm font-semibold">Arrive at Office</p>
+<p class="text-slate-500 text-xs">Alexanderplatz Station</p>
+</div>
+</div>
+</div>
+<button class="w-full py-3 bg-primary text-white text-sm font-bold tracking-wide uppercase flex items-center justify-center gap-2">
+                        Start Navigation <span class="material-symbols-outlined text-sm">navigation</span>
+</button>
+</div>
+<!-- Route Card 2: Alternative -->
+<div class="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+<div class="flex justify-between items-start mb-3">
+<div>
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold">18 min • 08:48 — 09:06</p>
+<p class="text-amber-600 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">warning</span> 2 min delay reported
+                            </p>
+</div>
+<div class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold">
+                            BUS 100
+                        </div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex -space-x-1">
+<div class="size-6 rounded-full bg-slate-100 border border-white flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px]">directions_walk</span>
+</div>
+<div class="size-6 rounded-full bg-primary border border-white flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-[14px]">directions_bus</span>
+</div>
+</div>
+<p class="text-slate-500 text-xs">Walk 4 min to Bus Stop A, take Bus 100 to Alexanderplatz</p>
+<button class="text-primary text-xs font-bold">Details</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation -->
+<nav class="flex border-t border-slate-200 bg-white px-4 pb-6 pt-2">
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1">route</span>
+<p class="text-xs font-bold leading-normal">Plan</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">bookmark</span>
+<p class="text-xs font-medium leading-normal">Saved</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">map</span>
+<p class="text-xs font-medium leading-normal">Explore</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<p class="text-xs font-medium leading-normal">Profile</p>
+</a>
+</nav>
+</div>
+</body></html>

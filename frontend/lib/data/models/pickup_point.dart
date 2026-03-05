@@ -6,7 +6,7 @@ class PickupPoint {
   final double lat;
   final double lng;
   final String pickupname;
-  final String routeid;
+  final int routeid;
 
   const PickupPoint({
     required this.seq,
@@ -19,29 +19,14 @@ class PickupPoint {
     required this.routeid,
   });
 
-  factory PickupPoint.fromJson(Map<String, dynamic> json) {
-    return PickupPoint(
-      seq: json['seq'] as int,
-      busstopcode: json['busstopcode'] as String,
-      longName: json['LongName'] as String,
-      shortName: json['ShortName'] as String,
-      lat: (json['lat'] as num).toDouble(),
-      lng: (json['lng'] as num).toDouble(),
-      pickupname: json['pickupname'] as String,
-      routeid: json['routeid'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'seq': seq,
-      'busstopcode': busstopcode,
-      'LongName': longName,
-      'ShortName': shortName,
-      'lat': lat,
-      'lng': lng,
-      'pickupname': pickupname,
-      'routeid': routeid,
-    };
-  }
+  factory PickupPoint.fromJson(Map<String, dynamic> json) => PickupPoint(
+    seq: (json['seq'] as num?)?.toInt() ?? 0,
+    busstopcode: json['busstopcode'] as String? ?? '',
+    longName: json['LongName'] as String? ?? '',
+    shortName: json['ShortName'] as String? ?? '',
+    lat: (json['lat'] as num?)?.toDouble() ?? 0,
+    lng: (json['lng'] as num?)?.toDouble() ?? 0,
+    pickupname: json['pickupname'] as String? ?? '',
+    routeid: (json['routeid'] as num?)?.toInt() ?? 0,
+  );
 }

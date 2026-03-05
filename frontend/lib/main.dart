@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'package:frontend/app/app.dart';
-import 'package:frontend/core/storage/local_storage.dart';
-import 'package:frontend/state/providers.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:frontend/app/theme.dart';
+import 'package:frontend/app/router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox<String>('favorites');
+  await Hive.openBox<String>('recents');
+  runApp(const ProviderScope(child: NusMotionApp()));
+}
 
-  final localStorage = LocalStorage();
-  await localStorage.init();
+class NusMotionApp extends StatelessWidget {
+  const NusMotionApp({super.key});
 
-  runApp(
-    ProviderScope(
-      overrides: [localStorageProvider.overrideWithValue(localStorage)],
-      child: const App(),
-    ),
-  );
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp.router(
+      title: 'NUS Motion',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      routerConfig: router,
+    );
+  }
 }

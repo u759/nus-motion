@@ -1,83 +1,89 @@
-import 'package:frontend/core/storage/local_storage.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class FavoritesRepository {
-  final LocalStorage _storage;
+  Box<String> get _favBox => Hive.box<String>('favorites');
+  Box<String> get _recentBox => Hive.box<String>('recents');
 
-  FavoritesRepository(this._storage);
+  // Favorite Stops
+  List<String> getFavoriteStops() {
+    return _favBox.values
+        .where((v) => v.startsWith('stop:'))
+        .map((v) => v.substring(5))
+        .toList();
+  }
 
-  // ── Favorite routes ───────────────────────────────────────────────
+  bool isStopFavorite(String stopName) {
+    return _favBox.values.contains('stop:$stopName');
+  }
 
-  List<String> getFavoriteRoutes() => _storage.getFavoriteRoutes();
-
-  bool isFavoriteRoute(String routeCode) =>
-      _storage.getFavoriteRoutes().contains(routeCode);
-
-  Future<void> addFavoriteRoute(String routeCode) async {
-    final routes = _storage.getFavoriteRoutes();
-    if (!routes.contains(routeCode)) {
-      routes.add(routeCode);
-      await _storage.saveFavoriteRoutes(routes);
+  Future<void> toggleStopFavorite(String stopName) async {
+    final key = 'stop:$stopName';
+    final existingKey = _favBox.keys.cast<dynamic>().firstWhere(
+      (k) => _favBox.get(k) == key,
+      orElse: () => null,
+    );
+    if (existingKey != null) {
+      await _favBox.delete(existingKey);
+    } else {
+      await _favBox.add(key);
     }
   }
 
-  Future<void> removeFavoriteRoute(String routeCode) async {
-    final routes = _storage.getFavoriteRoutes();
-    routes.remove(routeCode);
-    await _storage.saveFavoriteRoutes(routes);
+  // Favorite Routes
+  List<({String from, String to})> getFavoriteRoutes() {
+    return _favBox.values.where((v) => v.startsWith('route:')).map((v) {
+      final parts = v.substring(6).split('|');
+      return (from: parts[0], to: parts.length > 1 ? parts[1] : '');
+    }).toList();
   }
 
-  // ── Favorite stops ────────────────────────────────────────────────
+  bool isRouteFavorite(String from, String to) {
+    return _favBox.values.contains('route:$from|$to');
+  }
 
-  List<String> getFavoriteStops() => _storage.getFavoriteStops();
-
-  bool isFavoriteStop(String stopName) =>
-      _storage.getFavoriteStops().contains(stopName);
-
-  Future<void> addFavoriteStop(String stopName) async {
-    final stops = _storage.getFavoriteStops();
-    if (!stops.contains(stopName)) {
-      stops.add(stopName);
-      await _storage.saveFavoriteStops(stops);
+  Future<void> toggleRouteFavorite(String from, String to) async {
+    final key = 'route:$from|$to';
+    final existingKey = _favBox.keys.cast<dynamic>().firstWhere(
+      (k) => _favBox.get(k) == key,
+      orElse: () => null,
+    );
+    if (existingKey != null) {
+      await _favBox.delete(existingKey);
+    } else {
+      await _favBox.add(key);
     }
   }
 
-  Future<void> removeFavoriteStop(String stopName) async {
-    final stops = _storage.getFavoriteStops();
-    stops.remove(stopName);
-    await _storage.saveFavoriteStops(stops);
+  // Recent Searches
+  List<({String from, String to})> getRecentSearches() {
+    return _recentBox.values
+        .map((v) {
+          final parts = v.split('|');
+          return (from: parts[0], to: parts.length > 1 ? parts[1] : '');
+        })
+        .toList()
+        .reversed
+        .toList();
   }
 
-  // ── Recent searches ───────────────────────────────────────────────
-
-  List<String> getRecentSearches() => _storage.getRecentSearches();
-
-  Future<void> addRecentSearch(String query) async {
-    final searches = _storage.getRecentSearches();
-    searches.remove(query); // remove duplicate if exists
-    searches.insert(0, query); // most recent first
-    if (searches.length > 20) {
-      searches.removeRange(20, searches.length);
+  Future<void> addRecentSearch(String from, String to) async {
+    final key = '$from|$to';
+    // Remove duplicate if exists
+    final existingKey = _recentBox.keys.cast<dynamic>().firstWhere(
+      (k) => _recentBox.get(k) == key,
+      orElse: () => null,
+    );
+    if (existingKey != null) {
+      await _recentBox.delete(existingKey);
     }
-    await _storage.saveRecentSearches(searches);
+    await _recentBox.add(key);
+    // Keep only last 10
+    while (_recentBox.length > 10) {
+      await _recentBox.deleteAt(0);
+    }
   }
 
   Future<void> clearRecentSearches() async {
-    await _storage.saveRecentSearches([]);
-  }
-
-  // ── Recent trips ──────────────────────────────────────────────────
-
-  List<Map<String, String>> getRecentTrips() => _storage.getRecentTrips();
-
-  Future<void> addRecentTrip(Map<String, String> trip) async {
-    final trips = _storage.getRecentTrips();
-    trips.removeWhere(
-      (t) => t['from'] == trip['from'] && t['to'] == trip['to'],
-    );
-    trips.insert(0, trip);
-    if (trips.length > 10) {
-      trips.removeRange(10, trips.length);
-    }
-    await _storage.saveRecentTrips(trips);
+    await _recentBox.clear();
   }
 }

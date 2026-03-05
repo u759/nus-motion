@@ -13,23 +13,11 @@ class Announcement {
     required this.affectedServiceIds,
   });
 
-  factory Announcement.fromJson(Map<String, dynamic> json) {
-    return Announcement(
-      id: json['ID'] as String,
-      text: json['Text'] as String,
-      status: json['Status'] as String,
-      priority: json['Priority'] as String,
-      affectedServiceIds: json['Affected_Service_Ids'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'ID': id,
-      'Text': text,
-      'Status': status,
-      'Priority': priority,
-      'Affected_Service_Ids': affectedServiceIds,
-    };
-  }
+  factory Announcement.fromJson(Map<String, dynamic> json) => Announcement(
+    id: json['ID'] as String? ?? '',
+    text: json['Text'] as String? ?? '',
+    status: json['Status'] as String? ?? '',
+    priority: json['Priority'] as String? ?? '',
+    affectedServiceIds: json['Affected_Service_Ids'] as String? ?? '',
+  );
 }

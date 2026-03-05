@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>Transit Alerts</title>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased">
+<div class="relative flex min-h-screen w-full flex-col max-w-md mx-auto bg-background-light dark:bg-background-dark shadow-xl overflow-x-hidden">
+<!-- Header -->
+<header class="sticky top-0 z-10 bg-background-light/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+<div class="flex items-center p-4 justify-between">
+<button class="text-slate-900 dark:text-slate-100 flex size-10 items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h2 class="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Transit Alerts</h2>
+<div class="flex w-10 items-center justify-end">
+<button class="text-slate-900 dark:text-slate-100 flex size-10 items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
+<span class="material-symbols-outlined">search</span>
+</button>
+</div>
+</div>
+<!-- Tabs -->
+<div class="px-4">
+<div class="flex border-b border-slate-200 dark:border-slate-800 gap-6">
+<button class="flex flex-col items-center justify-center border-b-2 border-primary text-primary pb-3 pt-2">
+<p class="text-sm font-bold">All</p>
+</button>
+<button class="flex flex-col items-center justify-center border-b-2 border-transparent text-slate-500 dark:text-slate-400 pb-3 pt-2 hover:text-primary transition-colors">
+<p class="text-sm font-bold">Service Updates</p>
+</button>
+<button class="flex flex-col items-center justify-center border-b-2 border-transparent text-slate-500 dark:text-slate-400 pb-3 pt-2 hover:text-primary transition-colors">
+<p class="text-sm font-bold">Maintenance</p>
+</button>
+</div>
+</div>
+</header>
+<main class="flex-1 overflow-y-auto">
+<!-- Active Alerts Section -->
+<div class="p-4">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-base font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Current Alerts</h3>
+<span class="bg-primary/10 text-primary text-[10px] font-black px-2 py-0.5 rounded-full uppercase">3 New</span>
+</div>
+<div class="space-y-3">
+<!-- Alert Item 1 -->
+<div class="flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-center rounded-lg bg-red-100 text-red-600 shrink-0 size-12">
+<span class="material-symbols-outlined">warning</span>
+</div>
+<div class="flex flex-col flex-1">
+<div class="flex justify-between items-start">
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold">Route 10 Delay</p>
+<span class="text-slate-400 text-xs font-medium">5m ago</span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">15-minute delay due to heavy traffic near West Campus entrance. Plan for extra travel time.</p>
+</div>
+</div>
+<!-- Alert Item 2 -->
+<div class="flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-center rounded-lg bg-orange-100 text-orange-600 shrink-0 size-12">
+<span class="material-symbols-outlined">settings_suggest</span>
+</div>
+<div class="flex flex-col flex-1">
+<div class="flex justify-between items-start">
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold">Elevator Maintenance</p>
+<span class="text-slate-400 text-xs font-medium">1h ago</span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">Central Station North elevator is out of service for scheduled maintenance until 4:00 PM.</p>
+</div>
+</div>
+<!-- Alert Item 3 -->
+<div class="flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0 size-12">
+<span class="material-symbols-outlined">info</span>
+</div>
+<div class="flex flex-col flex-1">
+<div class="flex justify-between items-start">
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold">Holiday Schedule</p>
+<span class="text-slate-400 text-xs font-medium">3h ago</span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">University transit will operate on a reduced schedule this coming Friday due to the holiday.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Yesterday Section -->
+<div class="p-4">
+<h3 class="text-base font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4">Past Alerts</h3>
+<div class="flex items-start gap-4 p-4 rounded-xl bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 opacity-70">
+<div class="flex items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-500 shrink-0 size-12">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+<div class="flex flex-col flex-1">
+<div class="flex justify-between items-start">
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold">Campus Shuttle Resumed</p>
+<span class="text-slate-400 text-xs font-medium">1d ago</span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1 leading-relaxed">Normal service has resumed for all campus shuttle routes following earlier obstructions.</p>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-6 pb-6 pt-3 flex items-center justify-between">
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">map</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Map</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">route</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Plan</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1">notifications</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Alerts</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Profile</span>
+</a>
+</nav>
+</div>
+</body></html>

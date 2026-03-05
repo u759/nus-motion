@@ -1,5 +1,9 @@
 .vscode/
 
+# Secrets (single source: frontend/secrets.properties)
+frontend/secrets.properties
+frontend/ios/Flutter/Secrets.xcconfig
+
 # Flutter build output
 frontend/build/
 frontend/.dart_tool/

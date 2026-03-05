@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+platform :ios, '14.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -26,6 +26,20 @@ end
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
 flutter_ios_podfile_setup
+
+# Auto-generate Secrets.xcconfig from secrets.properties before build
+secrets_file = File.expand_path('../../secrets.properties', __FILE__)
+secrets_xcconfig = File.expand_path('../Flutter/Secrets.xcconfig', __FILE__)
+if File.exist?(secrets_file)
+  File.open(secrets_xcconfig, 'w') do |out|
+    out.puts "// Auto-generated from secrets.properties — do not edit"
+    File.readlines(secrets_file).each do |line|
+      line.strip!
+      next if line.empty? || line.start_with?('#')
+      out.puts line
+    end
+  end
+end
 
 target 'Runner' do
   use_frameworks!

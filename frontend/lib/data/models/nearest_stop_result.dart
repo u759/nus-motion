@@ -19,29 +19,15 @@ class NearestStopResult {
     required this.distanceMeters,
   });
 
-  factory NearestStopResult.fromJson(Map<String, dynamic> json) {
-    return NearestStopResult(
-      buildingName: json['buildingName'] as String,
-      buildingLatitude: (json['buildingLatitude'] as num).toDouble(),
-      buildingLongitude: (json['buildingLongitude'] as num).toDouble(),
-      busStopName: json['busStopName'] as String,
-      busStopDisplayName: json['busStopDisplayName'] as String,
-      busStopLatitude: (json['busStopLatitude'] as num).toDouble(),
-      busStopLongitude: (json['busStopLongitude'] as num).toDouble(),
-      distanceMeters: (json['distanceMeters'] as num).toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'buildingName': buildingName,
-      'buildingLatitude': buildingLatitude,
-      'buildingLongitude': buildingLongitude,
-      'busStopName': busStopName,
-      'busStopDisplayName': busStopDisplayName,
-      'busStopLatitude': busStopLatitude,
-      'busStopLongitude': busStopLongitude,
-      'distanceMeters': distanceMeters,
-    };
-  }
+  factory NearestStopResult.fromJson(Map<String, dynamic> json) =>
+      NearestStopResult(
+        buildingName: json['buildingName'] as String? ?? '',
+        buildingLatitude: (json['buildingLatitude'] as num?)?.toDouble() ?? 0,
+        buildingLongitude: (json['buildingLongitude'] as num?)?.toDouble() ?? 0,
+        busStopName: json['busStopName'] as String? ?? '',
+        busStopDisplayName: json['busStopDisplayName'] as String? ?? '',
+        busStopLatitude: (json['busStopLatitude'] as num?)?.toDouble() ?? 0,
+        busStopLongitude: (json['busStopLongitude'] as num?)?.toDouble() ?? 0,
+        distanceMeters: (json['distanceMeters'] as num?)?.toDouble() ?? 0,
+      );
 }

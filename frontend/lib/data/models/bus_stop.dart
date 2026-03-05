@@ -15,25 +15,12 @@ class BusStop {
     required this.longitude,
   });
 
-  factory BusStop.fromJson(Map<String, dynamic> json) {
-    return BusStop(
-      caption: json['caption'] as String,
-      name: json['name'] as String,
-      longName: json['LongName'] as String,
-      shortName: json['ShortName'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'caption': caption,
-      'name': name,
-      'LongName': longName,
-      'ShortName': shortName,
-      'latitude': latitude,
-      'longitude': longitude,
-    };
-  }
+  factory BusStop.fromJson(Map<String, dynamic> json) => BusStop(
+    caption: json['caption'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    longName: json['LongName'] as String? ?? '',
+    shortName: json['ShortName'] as String? ?? '',
+    latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+    longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+  );
 }

@@ -1,18 +1,17 @@
 import 'dart:async';
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shimmer/shimmer.dart';
-
 import 'package:frontend/app/theme.dart';
+import 'package:frontend/core/constants/app_constants.dart';
+import 'package:frontend/core/widgets/loading_shimmer.dart';
+import 'package:frontend/core/widgets/error_card.dart';
+import 'package:frontend/core/widgets/empty_state.dart';
+import 'package:frontend/core/utils/weather_mapper.dart';
+import 'package:frontend/data/models/announcement.dart';
+import 'package:frontend/data/models/ticker_tape.dart';
 import 'package:frontend/state/providers.dart';
+import 'package:frontend/features/alerts/widgets/alert_card.dart';
 import 'package:frontend/features/alerts/widgets/weather_card.dart';
-import 'package:frontend/features/alerts/widgets/disruption_card.dart';
-import 'package:frontend/features/alerts/widgets/saved_stop_alert_card.dart';
-
-enum _AlertTab { all, service, weather, personal }
 
 class AlertsScreen extends ConsumerStatefulWidget {
   const AlertsScreen({super.key});
@@ -21,470 +20,318 @@ class AlertsScreen extends ConsumerStatefulWidget {
   ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
 }
 
-class _AlertsScreenState extends ConsumerState<AlertsScreen> {
-  _AlertTab _activeTab = _AlertTab.all;
-  Timer? _alertRefreshTimer;
-  Timer? _weatherRefreshTimer;
-
-  // NUS Kent Ridge campus coordinates
-  static const _campusLat = 1.2966;
-  static const _campusLng = 103.7764;
+class _AlertsScreenState extends ConsumerState<AlertsScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    _alertRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _tabController = TabController(length: 3, vsync: this);
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       ref.invalidate(announcementsProvider);
       ref.invalidate(tickerTapesProvider);
-      final stops = ref.read(favoriteStopsProvider);
-      for (final stopName in stops) {
-        ref.invalidate(shuttlesProvider(stopName));
-      }
-    });
-    _weatherRefreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (!mounted) return;
-      ref.invalidate(weatherProvider((lat: _campusLat, lng: _campusLng)));
     });
   }
 
   @override
   void dispose() {
-    _alertRefreshTimer?.cancel();
-    _weatherRefreshTimer?.cancel();
+    _pollTimer?.cancel();
+    _tabController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final weatherAsync = ref.watch(
-      weatherProvider((lat: _campusLat, lng: _campusLng)),
+    final announcements = ref.watch(announcementsProvider);
+    final tickerTapes = ref.watch(tickerTapesProvider);
+    final weather = ref.watch(
+      weatherProvider((
+        lat: AppConstants.nusLatitude,
+        lng: AppConstants.nusLongitude,
+      )),
     );
-    final announcementsAsync = ref.watch(announcementsProvider);
-    final tickerTapesAsync = ref.watch(tickerTapesProvider);
-    final favoriteStops = ref.watch(favoriteStopsProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: RefreshIndicator(
-              color: AppTheme.primary,
-              backgroundColor: AppTheme.neutralDark,
-              onRefresh: () async {
-                ref.invalidate(announcementsProvider);
-                ref.invalidate(tickerTapesProvider);
-                ref.invalidate(
-                  weatherProvider((lat: _campusLat, lng: _campusLng)),
-                );
-              },
-              child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.spacing16,
-                ).copyWith(bottom: 100, top: AppTheme.spacing16),
-                children: [
-                  // ── Weather Forecast ───────────────────────
-                  if (_activeTab == _AlertTab.all ||
-                      _activeTab == _AlertTab.weather) ...[
-                    _buildSectionHeader(
-                      context,
-                      'WEATHER FORECAST',
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Live Radar',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.primary,
-                                ),
-                          ),
-                          const SizedBox(width: AppTheme.spacing4),
-                          const Icon(
-                            Icons.open_in_new,
-                            size: 12,
-                            color: AppTheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppTheme.spacing12),
-                    weatherAsync.when(
-                      data: (weather) => WeatherCard(weather: weather),
-                      loading: () => _buildShimmerPlaceholder(180),
-                      error: (_, _) =>
-                          _buildErrorCard(context, 'Weather unavailable'),
-                    ),
-                    const SizedBox(height: AppTheme.spacing24),
+      backgroundColor: AppColors.background,
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxScrolled) => [
+          SliverAppBar(
+            pinned: true,
+            floating: true,
+            backgroundColor: AppColors.surface,
+            title: const Text(
+              'Transit Alerts',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            centerTitle: true,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.search, color: AppColors.textSecondary),
+                onPressed: () {},
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(48),
+              child: Container(
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppColors.border)),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorColor: AppColors.primary,
+                  indicatorWeight: 2,
+                  labelColor: AppColors.primary,
+                  labelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  unselectedLabelColor: AppColors.textMuted,
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  tabs: const [
+                    Tab(text: 'All'),
+                    Tab(text: 'Service Updates'),
+                    Tab(text: 'Maintenance'),
                   ],
-
-                  // ── Active Disruptions ─────────────────────
-                  if (_activeTab == _AlertTab.all ||
-                      _activeTab == _AlertTab.service) ...[
-                    _buildSectionHeader(context, 'ACTIVE DISRUPTIONS'),
-                    const SizedBox(height: AppTheme.spacing12),
-                    _buildDisruptions(
-                      context,
-                      announcementsAsync,
-                      tickerTapesAsync,
-                    ),
-                    const SizedBox(height: AppTheme.spacing24),
-                  ],
-
-                  // ── Trip Reminders ─────────────────────────
-                  if (_activeTab == _AlertTab.all ||
-                      _activeTab == _AlertTab.personal) ...[
-                    _buildSectionHeader(context, 'TRIP REMINDERS'),
-                    const SizedBox(height: AppTheme.spacing12),
-                    _buildTripReminder(context),
-                    const SizedBox(height: AppTheme.spacing24),
-                  ],
-
-                  // ── Saved Stops ────────────────────────────
-                  if (_activeTab == _AlertTab.all ||
-                      _activeTab == _AlertTab.personal) ...[
-                    _buildSectionHeader(context, 'SAVED STOPS'),
-                    const SizedBox(height: AppTheme.spacing12),
-                    if (favoriteStops.isEmpty)
-                      _buildEmptyCard(context, 'No saved stops'),
-                    ...favoriteStops.map(
-                      (stopName) => Padding(
-                        key: ValueKey('alert_stop_$stopName'),
-                        padding: const EdgeInsets.only(
-                          bottom: AppTheme.spacing12,
-                        ),
-                        child: SavedStopAlertCard(stopName: stopName),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
         ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // All tab
+            _AlertsList(
+              announcements: announcements,
+              tickerTapes: tickerTapes,
+              weather: weather,
+              filter: null,
+            ),
+            // Service Updates tab
+            _AlertsList(
+              announcements: announcements,
+              tickerTapes: tickerTapes,
+              weather: weather,
+              filter: 'service',
+            ),
+            // Maintenance tab
+            _AlertsList(
+              announcements: announcements,
+              tickerTapes: tickerTapes,
+              weather: weather,
+              filter: 'maintenance',
+            ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  // ── Header with tabs ────────────────────────────────────────────
+class _AlertsList extends StatelessWidget {
+  final AsyncValue<List<Announcement>> announcements;
+  final AsyncValue<List<TickerTape>> tickerTapes;
+  final AsyncValue weather;
+  final String? filter;
 
-  Widget _buildHeader() {
-    final theme = Theme.of(context);
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.backgroundDark.withValues(alpha: 0.8),
-            border: const Border(
-              bottom: BorderSide(color: AppTheme.surfaceVariant),
-            ),
+  const _AlertsList({
+    required this.announcements,
+    required this.tickerTapes,
+    required this.weather,
+    this.filter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Weather card (only on All tab)
+        if (filter == null)
+          weather.when(
+            data: (w) => WeatherCard(weather: w),
+            loading: () => const LoadingShimmer(height: 80),
+            error: (_, __) => const SizedBox.shrink(),
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Column(
+        if (filter == null) const SizedBox(height: 16),
+
+        // Current Alerts
+        announcements.when(
+          data: (items) {
+            var filtered = items;
+            if (filter == 'service') {
+              filtered = items
+                  .where(
+                    (a) =>
+                        a.priority.toLowerCase().contains('high') ||
+                        a.status.toLowerCase() == 'active',
+                  )
+                  .toList();
+            } else if (filter == 'maintenance') {
+              filtered = items
+                  .where(
+                    (a) =>
+                        a.priority.toLowerCase().contains('low') ||
+                        a.text.toLowerCase().contains('maintenance'),
+                  )
+                  .toList();
+            }
+
+            final current = filtered
+                .where((a) => a.status.toLowerCase() != 'resolved')
+                .toList();
+            final past = filtered
+                .where((a) => a.status.toLowerCase() == 'resolved')
+                .toList();
+
+            if (current.isEmpty && past.isEmpty) {
+              return const EmptyState(
+                icon: Icons.check_circle_outline,
+                title: 'No alerts',
+                subtitle: 'All services running normally',
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.spacing16,
-                    vertical: AppTheme.spacing12,
-                  ),
-                  child: Row(
+                if (current.isNotEmpty) ...[
+                  Row(
                     children: [
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => Navigator.of(context).maybePop(),
-                          customBorder: const CircleBorder(),
-                          child: const SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Icon(
-                              Icons.arrow_back,
-                              color: AppTheme.textPrimary,
-                              size: 24,
-                            ),
-                          ),
+                      const Text(
+                        'CURRENT ALERTS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textMuted,
+                          letterSpacing: 1.2,
                         ),
                       ),
-                      const SizedBox(width: AppTheme.spacing12),
-                      Expanded(
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                         child: Text(
-                          'Alerts & Notifications',
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {},
-                          customBorder: const CircleBorder(),
-                          child: const SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: Icon(
-                              Icons.settings,
-                              color: AppTheme.textPrimary,
-                              size: 22,
-                            ),
+                          '${current.length} NEW',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.spacing16,
+                  const SizedBox(height: 12),
+                  ...current.map((a) => AlertCard(announcement: a)),
+                ],
+                if (past.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  const Text(
+                    'PAST ALERTS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                      letterSpacing: 1.2,
+                    ),
                   ),
-                  child: Row(
-                    children: _AlertTab.values.map((tab) {
-                      final isActive = _activeTab == tab;
-                      return Padding(
-                        padding: const EdgeInsets.only(
-                          right: AppTheme.spacing24,
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _activeTab = tab);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.only(
-                                bottom: AppTheme.spacing12,
-                                top: AppTheme.spacing4,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: isActive
-                                        ? AppTheme.primary
-                                        : Colors.transparent,
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                              child: AnimatedDefaultTextStyle(
-                                duration: AppTheme.durationFast,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isActive
-                                      ? FontWeight.bold
-                                      : FontWeight.w500,
-                                  color: isActive
-                                      ? AppTheme.primary
-                                      : AppTheme.textMuted,
-                                ),
-                                child: Text(_tabLabel(tab)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                  const SizedBox(height: 12),
+                  ...past.map(
+                    (a) => Opacity(
+                      opacity: 0.6,
+                      child: AlertCard(announcement: a, isResolved: true),
+                    ),
                   ),
-                ),
+                ],
               ],
-            ),
-          ),
+            );
+          },
+          loading: () => const ShimmerList(itemCount: 3, itemHeight: 90),
+          error: (error, _) => ErrorCard(message: error.toString()),
         ),
-      ),
-    );
-  }
 
-  String _tabLabel(_AlertTab tab) {
-    switch (tab) {
-      case _AlertTab.all:
-        return 'All';
-      case _AlertTab.service:
-        return 'Service';
-      case _AlertTab.weather:
-        return 'Weather';
-      case _AlertTab.personal:
-        return 'Personal';
-    }
-  }
+        // Ticker tapes
+        tickerTapes.when(
+          data: (tapes) {
+            if (tapes.isEmpty || filter != null) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                const Text(
+                  'LIVE UPDATES',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...tapes.map((t) => _TickerCard(tape: t)),
+              ],
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
 
-  // ── Section header ──────────────────────────────────────────────
-
-  Widget _buildSectionHeader(
-    BuildContext context,
-    String title, {
-    Widget? trailing,
-  }) {
-    return Row(
-      children: [
-        Text(title, style: Theme.of(context).textTheme.labelSmall),
-        const Spacer(),
-        ?trailing,
+        const SizedBox(height: 24),
       ],
     );
   }
+}
 
-  // ── Disruptions ─────────────────────────────────────────────────
+class _TickerCard extends StatelessWidget {
+  final TickerTape tape;
+  const _TickerCard({required this.tape});
 
-  Widget _buildDisruptions(
-    BuildContext context,
-    AsyncValue<List<dynamic>> announcementsAsync,
-    AsyncValue<List<dynamic>> tickerTapesAsync,
-  ) {
-    return announcementsAsync.when(
-      data: (announcements) {
-        final tickerTapes = tickerTapesAsync.valueOrNull ?? [];
-        final cards = <Widget>[];
-
-        for (final a in announcements) {
-          final isHigh =
-              a.priority.toLowerCase() == 'high' ||
-              a.priority.toLowerCase() == 'urgent';
-          cards.add(
-            Padding(
-              key: ValueKey('ann_${a.hashCode}'),
-              padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
-              child: DisruptionCard(
-                badge: isHigh ? 'Delay' : 'Info',
-                meta: a.affectedServiceIds.isNotEmpty
-                    ? 'Line ${a.affectedServiceIds} \u2022 ${a.status}'
-                    : a.status,
-                title: a.text.length > 60 ? a.text.substring(0, 60) : a.text,
-                description: a.text,
-                priority: a.priority,
-              ),
-            ),
-          );
-        }
-
-        for (final t in tickerTapes) {
-          final isHigh =
-              t.priority.toLowerCase() == 'high' ||
-              t.priority.toLowerCase() == 'urgent';
-          cards.add(
-            Padding(
-              key: ValueKey('ticker_${t.hashCode}'),
-              padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
-              child: DisruptionCard(
-                badge: isHigh ? 'Delay' : 'Info',
-                meta: t.affectedServiceIds.isNotEmpty
-                    ? 'Line ${t.affectedServiceIds} \u2022 ${t.status}'
-                    : t.status,
-                title: t.message.length > 60
-                    ? t.message.substring(0, 60)
-                    : t.message,
-                description: t.message,
-                priority: t.priority,
-              ),
-            ),
-          );
-        }
-
-        if (cards.isEmpty) {
-          return _buildEmptyCard(context, 'No active disruptions');
-        }
-
-        return Column(children: cards);
-      },
-      loading: () => _buildShimmerPlaceholder(100),
-      error: (_, _) => _buildErrorCard(context, 'Could not load disruptions'),
-    );
-  }
-
-  // ── Trip reminder (placeholder) ─────────────────────────────────
-
-  Widget _buildTripReminder(BuildContext context) {
-    final theme = Theme.of(context);
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacing16),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+        color: AppColors.warningBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.alarm, color: AppTheme.primary, size: 24),
-          ),
-          const SizedBox(width: AppTheme.spacing16),
+          const Icon(Icons.warning_amber, color: AppColors.warning, size: 20),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Leave in 5 minutes',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'CS2103L Tutorial @ COM3-0121',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
+            child: Text(
+              tape.message,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const Icon(
-            Icons.chevron_right,
-            color: AppTheme.textSecondary,
-            size: 24,
           ),
         ],
-      ),
-    );
-  }
-
-  // ── Helpers ─────────────────────────────────────────────────────
-
-  Widget _buildShimmerPlaceholder(double height) {
-    return Shimmer.fromColors(
-      baseColor: AppTheme.surfaceVariant,
-      highlightColor: AppTheme.neutralDark,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceVariant,
-          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard(BuildContext context, String message) {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacing24),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.borderDark),
-      ),
-      child: Center(
-        child: Text(message, style: Theme.of(context).textTheme.bodySmall),
-      ),
-    );
-  }
-
-  Widget _buildEmptyCard(BuildContext context, String message) {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacing24),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-        border: Border.all(color: AppTheme.borderDark),
-      ),
-      child: Center(
-        child: Text(message, style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }

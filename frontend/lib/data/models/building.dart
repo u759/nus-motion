@@ -15,25 +15,12 @@ class Building {
     required this.longitude,
   });
 
-  factory Building.fromJson(Map<String, dynamic> json) {
-    return Building(
-      elementId: json['elementId'] as String,
-      name: json['name'] as String,
-      address: json['address'] as String,
-      postal: json['postal'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'elementId': elementId,
-      'name': name,
-      'address': address,
-      'postal': postal,
-      'latitude': latitude,
-      'longitude': longitude,
-    };
-  }
+  factory Building.fromJson(Map<String, dynamic> json) => Building(
+    elementId: json['elementId'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    address: json['address'] as String? ?? '',
+    postal: json['postal'] as String? ?? '',
+    latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+    longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+  );
 }

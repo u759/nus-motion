@@ -399,6 +399,18 @@ public class RoutingService {
             throw new IllegalArgumentException("Location query cannot be blank");
         }
 
+        // 0) Try parsing as "lat,lng" coordinates.
+        String[] parts = query.split(",");
+        if (parts.length == 2) {
+            try {
+                double lat = Double.parseDouble(parts[0].trim());
+                double lng = Double.parseDouble(parts[1].trim());
+                return new Location("Current Location", lat, lng);
+            } catch (NumberFormatException ignored) {
+                // Not coordinates, continue with name resolution
+            }
+        }
+
         String normalizedQuery = normalize(query);
 
         // 1) Try bus stops first.
