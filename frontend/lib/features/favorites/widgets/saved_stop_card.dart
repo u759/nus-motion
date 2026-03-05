@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/eta_formatter.dart';
@@ -26,31 +27,72 @@ class SavedStopCard extends ConsumerWidget {
       onDismissed: (_) => onDismissed(),
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
+        padding: const EdgeInsets.only(right: AppTheme.spacing24),
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(12),
+          color: AppTheme.error.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
-        child: const Icon(Icons.delete, color: Colors.redAccent),
+        child: const Icon(Icons.delete, color: AppTheme.error),
       ),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppTheme.spacing20),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(color: AppTheme.borderDark),
         ),
         child: shuttlesAsync.when(
-          data: (result) => _buildContent(result.shuttles),
-          loading: () => _buildContent([]),
-          error: (_, _) => _buildContent([]),
+          data: (result) => _buildContent(context, result.shuttles),
+          loading: () => _buildShimmer(),
+          error: (_, _) => _buildContent(context, []),
         ),
       ),
     );
   }
 
-  Widget _buildContent(List<Shuttle> shuttles) {
-    // Find the soonest arriving shuttle
+  Widget _buildShimmer() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surfaceVariant,
+      highlightColor: AppTheme.neutralDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  color: AppTheme.surfaceVariant,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacing12),
+              Container(
+                width: 120,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacing16),
+          Container(
+            height: 24,
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, List<Shuttle> shuttles) {
+    final theme = Theme.of(context);
     Shuttle? soonest;
     int? soonestMinutes;
     for (final s in shuttles) {
@@ -75,21 +117,19 @@ class SavedStopCard extends ConsumerWidget {
         (soonest != null &&
             (soonest.arrivalTime == 'Arr' || (soonestMinutes ?? 99) <= 2))
         ? AppTheme.primary
-        : const Color(0xFFCBD5E1);
+        : AppTheme.textSecondary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Location icon
             Container(
               width: 32,
               height: 32,
               decoration: const BoxDecoration(
-                color: Color(0xFF1E293B),
+                color: AppTheme.surfaceVariant,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -98,67 +138,49 @@ class SavedStopCard extends ConsumerWidget {
                 size: 18,
               ),
             ),
-            const SizedBox(width: 12),
-            // Stop name
+            const SizedBox(width: AppTheme.spacing12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     stopName,
-                    style: const TextStyle(
+                    style: theme.textTheme.labelMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      fontSize: 14,
                       color: AppTheme.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Bus Stop',
-                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
-                  ),
+                  Text('Bus Stop', style: theme.textTheme.bodySmall),
                 ],
               ),
             ),
-            // Arrival info
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   arrivalText,
-                  style: TextStyle(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: arrivalColor,
-                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (soonest != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    'Bus ${soonest.name}',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
+                  Text('Bus ${soonest.name}', style: theme.textTheme.bodySmall),
                 ],
               ],
             ),
           ],
         ),
-        // Divider
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Container(
-            height: 1,
-            color: Colors.white.withValues(alpha: 0.05),
-          ),
+          padding: const EdgeInsets.symmetric(vertical: AppTheme.spacing16),
+          child: Container(height: 1, color: AppTheme.borderDark),
         ),
-        // Route ETA badges
         if (shuttles.isNotEmpty)
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppTheme.spacing8,
+            runSpacing: AppTheme.spacing8,
             children: shuttles.map((s) {
               final eta = s.arrivalTime == 'Arr'
                   ? 'Arr'
@@ -166,26 +188,26 @@ class SavedStopCard extends ConsumerWidget {
                         ? '${s.arrivalTime}m'
                         : s.arrivalTime);
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                key: ValueKey('badge_${s.name}'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacing8,
+                  vertical: AppTheme.spacing4,
+                ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(4),
+                  color: AppTheme.surfaceVariant.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(AppTheme.spacing4),
                 ),
                 child: Text(
-                  '${s.name} • $eta',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFFCBD5E1),
+                  '${s.name} \u2022 $eta',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textSecondary,
                   ),
                 ),
               );
             }).toList(),
           )
         else
-          const Text(
-            'Loading routes…',
-            style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
-          ),
+          Text('Loading routes\u2026', style: theme.textTheme.bodySmall),
       ],
     );
   }

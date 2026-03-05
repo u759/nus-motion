@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/state/providers.dart';
@@ -80,27 +82,28 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               },
               child: ListView(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                ).copyWith(bottom: 100, top: 16),
+                  horizontal: AppTheme.spacing16,
+                ).copyWith(bottom: 100, top: AppTheme.spacing16),
                 children: [
                   // ── Weather Forecast ───────────────────────
                   if (_activeTab == _AlertTab.all ||
                       _activeTab == _AlertTab.weather) ...[
                     _buildSectionHeader(
+                      context,
                       'WEATHER FORECAST',
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             'Live Radar',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.primary,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.primary,
+                                ),
                           ),
-                          const SizedBox(width: 4),
-                          Icon(
+                          const SizedBox(width: AppTheme.spacing4),
+                          const Icon(
                             Icons.open_in_new,
                             size: 12,
                             color: AppTheme.primary,
@@ -108,43 +111,51 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppTheme.spacing12),
                     weatherAsync.when(
                       data: (weather) => WeatherCard(weather: weather),
-                      loading: () => _buildLoadingPlaceholder(180),
-                      error: (_, _) => _buildErrorCard('Weather unavailable'),
+                      loading: () => _buildShimmerPlaceholder(180),
+                      error: (_, _) =>
+                          _buildErrorCard(context, 'Weather unavailable'),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: AppTheme.spacing24),
                   ],
 
                   // ── Active Disruptions ─────────────────────
                   if (_activeTab == _AlertTab.all ||
                       _activeTab == _AlertTab.service) ...[
-                    _buildSectionHeader('ACTIVE DISRUPTIONS'),
-                    const SizedBox(height: 12),
-                    _buildDisruptions(announcementsAsync, tickerTapesAsync),
-                    const SizedBox(height: 24),
+                    _buildSectionHeader(context, 'ACTIVE DISRUPTIONS'),
+                    const SizedBox(height: AppTheme.spacing12),
+                    _buildDisruptions(
+                      context,
+                      announcementsAsync,
+                      tickerTapesAsync,
+                    ),
+                    const SizedBox(height: AppTheme.spacing24),
                   ],
 
                   // ── Trip Reminders ─────────────────────────
                   if (_activeTab == _AlertTab.all ||
                       _activeTab == _AlertTab.personal) ...[
-                    _buildSectionHeader('TRIP REMINDERS'),
-                    const SizedBox(height: 12),
-                    _buildTripReminder(),
-                    const SizedBox(height: 24),
+                    _buildSectionHeader(context, 'TRIP REMINDERS'),
+                    const SizedBox(height: AppTheme.spacing12),
+                    _buildTripReminder(context),
+                    const SizedBox(height: AppTheme.spacing24),
                   ],
 
                   // ── Saved Stops ────────────────────────────
                   if (_activeTab == _AlertTab.all ||
                       _activeTab == _AlertTab.personal) ...[
-                    _buildSectionHeader('SAVED STOPS'),
-                    const SizedBox(height: 12),
+                    _buildSectionHeader(context, 'SAVED STOPS'),
+                    const SizedBox(height: AppTheme.spacing12),
                     if (favoriteStops.isEmpty)
-                      _buildEmptyCard('No saved stops'),
+                      _buildEmptyCard(context, 'No saved stops'),
                     ...favoriteStops.map(
                       (stopName) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        key: ValueKey('alert_stop_$stopName'),
+                        padding: const EdgeInsets.only(
+                          bottom: AppTheme.spacing12,
+                        ),
                         child: SavedStopAlertCard(stopName: stopName),
                       ),
                     ),
@@ -161,95 +172,115 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   // ── Header with tabs ────────────────────────────────────────────
 
   Widget _buildHeader() {
+    final theme = Theme.of(context);
     return ClipRRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           decoration: BoxDecoration(
             color: AppTheme.backgroundDark.withValues(alpha: 0.8),
-            border: const Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+            border: const Border(
+              bottom: BorderSide(color: AppTheme.surfaceVariant),
+            ),
           ),
           child: SafeArea(
             bottom: false,
             child: Column(
               children: [
-                // Title row
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: AppTheme.spacing16,
+                    vertical: AppTheme.spacing12,
                   ),
                   child: Row(
                     children: [
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).maybePop(),
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.textPrimary,
-                          size: 24,
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).maybePop(),
+                          customBorder: const CircleBorder(),
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.arrow_back,
+                              color: AppTheme.textPrimary,
+                              size: 24,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const Expanded(
+                      const SizedBox(width: AppTheme.spacing12),
+                      Expanded(
                         child: Text(
                           'Alerts & Notifications',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.3,
-                            color: AppTheme.textPrimary,
-                          ),
+                          style: theme.textTheme.titleLarge,
                         ),
                       ),
-                      GestureDetector(
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.settings,
-                            color: AppTheme.textPrimary,
-                            size: 22,
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {},
+                          customBorder: const CircleBorder(),
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.settings,
+                              color: AppTheme.textPrimary,
+                              size: 22,
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                // Tab bar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.spacing16,
+                  ),
                   child: Row(
                     children: _AlertTab.values.map((tab) {
                       final isActive = _activeTab == tab;
                       return Padding(
-                        padding: const EdgeInsets.only(right: 24),
-                        child: GestureDetector(
-                          onTap: () => setState(() => _activeTab = tab),
-                          child: Container(
-                            padding: const EdgeInsets.only(bottom: 12, top: 4),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: isActive
-                                      ? AppTheme.primary
-                                      : Colors.transparent,
-                                  width: 2,
+                        padding: const EdgeInsets.only(
+                          right: AppTheme.spacing24,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _activeTab = tab);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.only(
+                                bottom: AppTheme.spacing12,
+                                top: AppTheme.spacing4,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: isActive
+                                        ? AppTheme.primary
+                                        : Colors.transparent,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
-                            ),
-                            child: Text(
-                              _tabLabel(tab),
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: isActive
-                                    ? FontWeight.bold
-                                    : FontWeight.w500,
-                                color: isActive
-                                    ? AppTheme.primary
-                                    : AppTheme.textMuted,
+                              child: AnimatedDefaultTextStyle(
+                                duration: AppTheme.durationFast,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isActive
+                                      ? FontWeight.bold
+                                      : FontWeight.w500,
+                                  color: isActive
+                                      ? AppTheme.primary
+                                      : AppTheme.textMuted,
+                                ),
+                                child: Text(_tabLabel(tab)),
                               ),
                             ),
                           ),
@@ -281,18 +312,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
   // ── Section header ──────────────────────────────────────────────
 
-  Widget _buildSectionHeader(String title, {Widget? trailing}) {
+  Widget _buildSectionHeader(
+    BuildContext context,
+    String title, {
+    Widget? trailing,
+  }) {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.5,
-            color: AppTheme.textMuted,
-          ),
-        ),
+        Text(title, style: Theme.of(context).textTheme.labelSmall),
         const Spacer(),
         ?trailing,
       ],
@@ -302,6 +329,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   // ── Disruptions ─────────────────────────────────────────────────
 
   Widget _buildDisruptions(
+    BuildContext context,
     AsyncValue<List<dynamic>> announcementsAsync,
     AsyncValue<List<dynamic>> tickerTapesAsync,
   ) {
@@ -316,11 +344,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               a.priority.toLowerCase() == 'urgent';
           cards.add(
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              key: ValueKey('ann_${a.hashCode}'),
+              padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
               child: DisruptionCard(
                 badge: isHigh ? 'Delay' : 'Info',
                 meta: a.affectedServiceIds.isNotEmpty
-                    ? 'Line ${a.affectedServiceIds} • ${a.status}'
+                    ? 'Line ${a.affectedServiceIds} \u2022 ${a.status}'
                     : a.status,
                 title: a.text.length > 60 ? a.text.substring(0, 60) : a.text,
                 description: a.text,
@@ -336,11 +365,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               t.priority.toLowerCase() == 'urgent';
           cards.add(
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              key: ValueKey('ticker_${t.hashCode}'),
+              padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
               child: DisruptionCard(
                 badge: isHigh ? 'Delay' : 'Info',
                 meta: t.affectedServiceIds.isNotEmpty
-                    ? 'Line ${t.affectedServiceIds} • ${t.status}'
+                    ? 'Line ${t.affectedServiceIds} \u2022 ${t.status}'
                     : t.status,
                 title: t.message.length > 60
                     ? t.message.substring(0, 60)
@@ -353,24 +383,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         }
 
         if (cards.isEmpty) {
-          return _buildEmptyCard('No active disruptions');
+          return _buildEmptyCard(context, 'No active disruptions');
         }
 
         return Column(children: cards);
       },
-      loading: () => _buildLoadingPlaceholder(100),
-      error: (_, _) => _buildErrorCard('Could not load disruptions'),
+      loading: () => _buildShimmerPlaceholder(100),
+      error: (_, _) => _buildErrorCard(context, 'Could not load disruptions'),
     );
   }
 
   // ── Trip reminder (placeholder) ─────────────────────────────────
 
-  Widget _buildTripReminder() {
+  Widget _buildTripReminder(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       decoration: BoxDecoration(
         color: AppTheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
@@ -384,23 +415,22 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             ),
             child: const Icon(Icons.alarm, color: AppTheme.primary, size: 24),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          const SizedBox(width: AppTheme.spacing16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Leave in 5 minutes',
-                  style: TextStyle(
-                    fontSize: 13,
+                  style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'CS2103L Tutorial @ COM3-0121',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
@@ -417,56 +447,44 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-  Widget _buildLoadingPlaceholder(double height) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppTheme.primary,
-          ),
+  Widget _buildShimmerPlaceholder(double height) {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surfaceVariant,
+      highlightColor: AppTheme.neutralDark,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         ),
       ),
     );
   }
 
-  Widget _buildErrorCard(String message) {
+  Widget _buildErrorCard(BuildContext context, String message) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTheme.spacing24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.borderDark),
       ),
       child: Center(
-        child: Text(
-          message,
-          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-        ),
+        child: Text(message, style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }
 
-  Widget _buildEmptyCard(String message) {
+  Widget _buildEmptyCard(BuildContext context, String message) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTheme.spacing24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.borderDark),
       ),
       child: Center(
-        child: Text(
-          message,
-          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-        ),
+        child: Text(message, style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }

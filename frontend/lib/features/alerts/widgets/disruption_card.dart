@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:frontend/app/theme.dart';
 
@@ -26,58 +27,50 @@ class DisruptionCard extends StatelessWidget {
       priority.toLowerCase() == 'high' || priority.toLowerCase() == 'urgent';
 
   Color get _accentColor =>
-      _isHighPriority ? const Color(0xFFFFBF00) : AppTheme.primary;
+      _isHighPriority ? AppTheme.warning : AppTheme.primary;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.backgroundDark.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         border: Border.all(
           color: _isHighPriority
-              ? const Color(0xFFFFBF00).withValues(alpha: 0.3)
-              : const Color(0xFF1E293B),
+              ? AppTheme.warning.withValues(alpha: 0.3)
+              : AppTheme.surfaceVariant,
         ),
       ),
       child: Stack(
         children: [
-          // Left accent bar (only for high priority)
           if (_isHighPriority)
             Positioned(
               top: 0,
               left: 0,
               bottom: 0,
-              child: Container(width: 4, color: const Color(0xFFFFBF00)),
+              child: Container(width: 4, color: AppTheme.warning),
             ),
-          // Content
           Padding(
-            padding: EdgeInsets.only(
-              left: _isHighPriority ? 16 : 16,
-              right: 16,
-              top: 16,
-              bottom: 16,
-            ),
+            padding: const EdgeInsets.all(AppTheme.spacing16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Badge row
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: AppTheme.spacing8,
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         color: _accentColor,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(AppTheme.spacing4),
                       ),
                       child: Text(
                         badge.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           letterSpacing: -0.3,
                           color: _isHighPriority
@@ -86,14 +79,12 @@ class DisruptionCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppTheme.spacing8),
                     Expanded(
                       child: Text(
                         meta,
-                        style: const TextStyle(
-                          fontSize: 12,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w500,
-                          color: AppTheme.textMuted,
                         ),
                       ),
                     ),
@@ -105,41 +96,35 @@ class DisruptionCard extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                // Title
+                const SizedBox(height: AppTheme.spacing8),
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 4),
-                // Description
+                const SizedBox(height: AppTheme.spacing4),
                 Text(
                   description,
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style: theme.textTheme.bodySmall?.copyWith(
                     color: AppTheme.textSecondary,
                     height: 1.5,
                   ),
                 ),
-                // Action buttons (only for high priority)
                 if (_isHighPriority) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppTheme.spacing16),
                   Row(
                     children: [
                       _ActionButton(
                         label: 'Check Route',
-                        color: const Color(0xFFFFBF00),
+                        color: AppTheme.warning,
                         onTap: onCheckRoute,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppTheme.spacing8),
                       _ActionButton(
                         label: 'Dismiss',
                         color: AppTheme.textSecondary,
-                        bgColor: const Color(0xFF1E293B),
+                        bgColor: AppTheme.surfaceVariant,
                         onTap: onDismiss,
                       ),
                     ],
@@ -169,20 +154,26 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: bgColor ?? color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: color,
+    return Material(
+      color: bgColor ?? color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap?.call();
+        },
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacing12,
+            vertical: AppTheme.spacing8,
+          ),
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ),
       ),

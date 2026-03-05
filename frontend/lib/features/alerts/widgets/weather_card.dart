@@ -11,6 +11,7 @@ class WeatherCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final icon = getWeatherIcon(weather.weatherCode);
     final description = getWeatherDescription(weather.weatherCode);
     final probability = weather.nextHourPrecipitationProbability;
@@ -18,39 +19,33 @@ class WeatherCard extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF334155)),
+        color: AppTheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.borderDark),
       ),
       child: Column(
         children: [
-          // ── Top panel ──────────────────────────────────────
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.spacing16),
             color: AppTheme.primary.withValues(alpha: 0.1),
             child: Row(
               children: [
                 Icon(icon, color: AppTheme.primary, size: 32),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppTheme.spacing12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         description,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           color: AppTheme.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Kent Ridge Campus • ${weather.temperatureCelsius.round()}°C',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textMuted,
-                        ),
+                        'Kent Ridge Campus \u2022 ${weather.temperatureCelsius.round()}\u00B0C',
+                        style: theme.textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -60,19 +55,15 @@ class WeatherCard extends StatelessWidget {
                   children: [
                     Text(
                       '$probability%',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                      style: theme.textTheme.titleLarge?.copyWith(
                         color: AppTheme.primary,
                       ),
                     ),
-                    const Text(
+                    Text(
                       'INTENSITY',
-                      style: TextStyle(
-                        fontSize: 10,
+                      style: theme.textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
-                        color: AppTheme.textMuted,
                       ),
                     ),
                   ],
@@ -80,18 +71,20 @@ class WeatherCard extends StatelessWidget {
               ],
             ),
           ),
-          // ── Radar placeholder ──────────────────────────────
           SizedBox(
             height: 128,
             width: double.infinity,
             child: Stack(
               children: [
                 Container(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                      colors: [
+                        AppTheme.backgroundDark,
+                        AppTheme.surfaceVariant,
+                      ],
                     ),
                   ),
                   child: Center(
@@ -102,7 +95,6 @@ class WeatherCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Gradient overlay
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -110,7 +102,7 @@ class WeatherCard extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          const Color(0xFF0F172A).withValues(alpha: 0.6),
+                          AppTheme.backgroundDark.withValues(alpha: 0.6),
                           Colors.transparent,
                         ],
                       ),

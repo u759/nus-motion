@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/data/models/building.dart';
@@ -21,36 +23,78 @@ class SearchRoutingScreen extends ConsumerStatefulWidget {
 
 class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
   final _toController = TextEditingController();
+  final _fromController = TextEditingController();
   final _toFocus = FocusNode();
+  final _fromFocus = FocusNode();
   int _tabIndex = 0; // 0=Suggested, 1=Nearby, 2=Recent
 
-  final String _fromValue = 'Current Location';
+  String _fromValue = 'Current Location';
+  bool _isEditingFrom = false;
   bool _hasSubmitted = false;
+  String? _resolvedOrigin;
 
   @override
   void initState() {
     super.initState();
     _toFocus.requestFocus();
     _toController.addListener(() => setState(() {}));
+    _fromController.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _toController.dispose();
+    _fromController.dispose();
     _toFocus.dispose();
+    _fromFocus.dispose();
     super.dispose();
   }
 
-  void _submitRoute() {
+  void _submitRoute() async {
     final dest = _toController.text.trim();
     if (dest.isEmpty) return;
+
+    String origin = _fromValue;
+
+    // If origin is "Current Location", resolve to nearest stop
+    if (origin == 'Current Location') {
+      final posAsync = ref.read(positionStreamProvider);
+      final pos = posAsync.valueOrNull;
+      final lat = pos?.latitude ?? 1.2966;
+      final lng = pos?.longitude ?? 103.7764;
+
+      try {
+        final stops = await ref
+            .read(transitServiceProvider)
+            .getNearbyStops(lat, lng);
+        if (stops.isNotEmpty) {
+          origin = stops.first.stopName;
+        }
+      } catch (_) {
+        // Fall through with unresolved origin
+      }
+    }
+
     ref.read(recentSearchesProvider.notifier).add(dest);
-    setState(() => _hasSubmitted = true);
+    setState(() {
+      _resolvedOrigin = origin;
+      _hasSubmitted = true;
+      _isEditingFrom = false;
+    });
   }
 
   void _selectSuggestion(String name) {
     _toController.text = name;
     _submitRoute();
+  }
+
+  void _selectFromSuggestion(String name) {
+    setState(() {
+      _fromValue = name;
+      _fromController.clear();
+      _isEditingFrom = false;
+    });
+    _toFocus.requestFocus();
   }
 
   // ── Build ─────────────────────────────────────────────────────────
@@ -63,9 +107,16 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
           children: [
             _buildHeader(),
             Expanded(
-              child: _hasSubmitted
-                  ? _buildRouteResults()
-                  : _buildSearchContent(),
+              child: AnimatedSwitcher(
+                duration: AppTheme.durationMedium,
+                switchInCurve: AppTheme.curve,
+                switchOutCurve: AppTheme.curve,
+                child: _isEditingFrom
+                    ? _buildFromSuggestions()
+                    : _hasSubmitted
+                    ? _buildRouteResults()
+                    : _buildSearchContent(),
+              ),
             ),
           ],
         ),
@@ -82,7 +133,12 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
         children: [
           // Title bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.spacing16,
+              AppTheme.spacing12,
+              AppTheme.spacing16,
+              AppTheme.spacing4,
+            ),
             child: Row(
               children: [
                 _circleButton(Icons.arrow_back, () {
@@ -92,12 +148,11 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                     context.go('/');
                   }
                 }),
-                const SizedBox(width: 8),
-                const Expanded(
+                const SizedBox(width: AppTheme.spacing8),
+                Expanded(
                   child: Text(
                     'Routing',
-                    style: TextStyle(
-                      fontSize: 18,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary,
                     ),
@@ -114,23 +169,100 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
 
           // Input fields
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.spacing16,
+              AppTheme.spacing8,
+              AppTheme.spacing16,
+              0,
+            ),
             child: Column(
               children: [
-                // From (readonly)
-                _inputField(
-                  icon: Icons.radio_button_checked,
-                  iconColor: AppTheme.primary.withValues(alpha: 0.6),
-                  child: Text(
-                    _fromValue,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppTheme.textPrimary,
-                    ),
+                // From (editable)
+                InkWell(
+                  onTap: _isEditingFrom
+                      ? null
+                      : () {
+                          setState(() {
+                            _isEditingFrom = true;
+                            _hasSubmitted = false;
+                          });
+                          _fromFocus.requestFocus();
+                        },
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                  child: _inputField(
+                    icon: Icons.radio_button_checked,
+                    iconColor: AppTheme.primary.withValues(alpha: 0.6),
+                    active: _isEditingFrom,
+                    child: _isEditingFrom
+                        ? TextField(
+                            controller: _fromController,
+                            focusNode: _fromFocus,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppTheme.textPrimary),
+                            decoration: InputDecoration(
+                              hintText: 'Search origin…',
+                              hintStyle: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppTheme.textMuted),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onSubmitted: (_) {
+                              final text = _fromController.text.trim();
+                              if (text.isNotEmpty) {
+                                _selectFromSuggestion(text);
+                              } else {
+                                setState(() => _isEditingFrom = false);
+                              }
+                            },
+                          )
+                        : Text(
+                            _fromValue,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: _fromValue == 'Current Location'
+                                      ? AppTheme.textSecondary
+                                      : AppTheme.textPrimary,
+                                ),
+                          ),
+                    trailing: _isEditingFrom
+                        ? InkWell(
+                            onTap: () {
+                              _fromController.clear();
+                              setState(() {
+                                _fromValue = 'Current Location';
+                                _isEditingFrom = false;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusFull,
+                            ),
+                            child: const Icon(
+                              Icons.cancel,
+                              color: AppTheme.textMuted,
+                              size: 18,
+                            ),
+                          )
+                        : _fromValue != 'Current Location'
+                        ? InkWell(
+                            onTap: () {
+                              setState(() {
+                                _fromValue = 'Current Location';
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusFull,
+                            ),
+                            child: const Icon(
+                              Icons.my_location,
+                              color: AppTheme.textMuted,
+                              size: 18,
+                            ),
+                          )
+                        : null,
                   ),
-                  active: false,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppTheme.spacing12),
                 // To (editable)
                 _inputField(
                   icon: Icons.location_on,
@@ -139,16 +271,13 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                   child: TextField(
                     controller: _toController,
                     focusNode: _toFocus,
-                    style: const TextStyle(
-                      fontSize: 14,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppTheme.textPrimary,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Search destination…',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textMuted,
-                      ),
+                      hintStyle: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(color: AppTheme.textMuted),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
@@ -156,11 +285,14 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                     onSubmitted: (_) => _submitRoute(),
                   ),
                   trailing: _toController.text.isNotEmpty
-                      ? GestureDetector(
+                      ? InkWell(
                           onTap: () {
                             _toController.clear();
                             setState(() => _hasSubmitted = false);
                           },
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusFull,
+                          ),
                           child: const Icon(
                             Icons.cancel,
                             color: AppTheme.textMuted,
@@ -174,7 +306,7 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
           ),
 
           // Tabs
-          const SizedBox(height: 12),
+          const SizedBox(height: AppTheme.spacing12),
           _buildTabs(),
         ],
       ),
@@ -182,15 +314,12 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
   }
 
   Widget _circleButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      child: Container(
+      customBorder: const CircleBorder(),
+      child: SizedBox(
         width: 40,
         height: 40,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.transparent,
-        ),
         child: Icon(icon, color: AppTheme.textPrimary, size: 24),
       ),
     );
@@ -206,7 +335,7 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.neutralDark,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: active
             ? Border.all(
                 color: AppTheme.primary.withValues(alpha: 0.5),
@@ -214,13 +343,19 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
               )
             : null,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.spacing12,
+        vertical: 10,
+      ),
       child: Row(
         children: [
           Icon(icon, size: 18, color: iconColor),
           const SizedBox(width: 10),
           Expanded(child: child),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          if (trailing != null) ...[
+            const SizedBox(width: AppTheme.spacing8),
+            trailing,
+          ],
         ],
       ),
     );
@@ -233,18 +368,26 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderDark)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
       child: Row(
         children: List.generate(labels.length, (i) {
           final active = i == _tabIndex;
-          return GestureDetector(
-            onTap: () => setState(() {
-              _tabIndex = i;
-              _hasSubmitted = false;
-            }),
+          return InkWell(
+            onTap: () {
+              if (_tabIndex != i) {
+                HapticFeedback.selectionClick();
+              }
+              setState(() {
+                _tabIndex = i;
+                _hasSubmitted = false;
+              });
+            },
             child: Container(
-              margin: const EdgeInsets.only(right: 24),
-              padding: const EdgeInsets.only(top: 8, bottom: 12),
+              margin: const EdgeInsets.only(right: AppTheme.spacing24),
+              padding: const EdgeInsets.only(
+                top: AppTheme.spacing8,
+                bottom: AppTheme.spacing12,
+              ),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
@@ -253,14 +396,16 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                   ),
                 ),
               ),
-              child: Text(
-                labels[i].toUpperCase(),
+              child: AnimatedDefaultTextStyle(
+                duration: AppTheme.durationFast,
+                curve: AppTheme.curve,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,
                   color: active ? AppTheme.primary : AppTheme.textMuted,
                 ),
+                child: Text(labels[i].toUpperCase()),
               ),
             ),
           );
@@ -271,12 +416,20 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
 
   // ── Search content (suggestions / nearby / recent) ──────────────
   Widget _buildSearchContent() {
-    return switch (_tabIndex) {
-      0 => _buildSuggestedTab(),
-      1 => _buildNearbyTab(),
-      2 => _buildRecentTab(),
-      _ => const SizedBox.shrink(),
-    };
+    return AnimatedSwitcher(
+      duration: AppTheme.durationMedium,
+      switchInCurve: AppTheme.curve,
+      switchOutCurve: AppTheme.curve,
+      child: KeyedSubtree(
+        key: ValueKey<int>(_tabIndex),
+        child: switch (_tabIndex) {
+          0 => _buildSuggestedTab(),
+          1 => _buildNearbyTab(),
+          2 => _buildRecentTab(),
+          _ => const SizedBox.shrink(),
+        },
+      ),
+    );
   }
 
   // ── Suggested tab ───────────────────────────────────────────────
@@ -347,22 +500,27 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
 
     return Container(
       color: AppTheme.primary.withValues(alpha: 0.05),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.spacing16,
+        AppTheme.spacing8,
+        AppTheme.spacing16,
+        AppTheme.spacing4,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'SUGGESTIONS',
-            style: TextStyle(
-              fontSize: 10,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: AppTheme.primary,
               letterSpacing: 2.0,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppTheme.spacing8),
           for (final item in visible)
             SuggestionTile(
+              key: ValueKey<String>('suggestion_${item.name}'),
               name: item.name,
               subtitle: item.subtitle,
               type: item.type,
@@ -373,26 +531,116 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
     );
   }
 
+  // ── From-field suggestions ──────────────────────────────────────
+  Widget _buildFromSuggestions() {
+    final query = _fromController.text.trim().toLowerCase();
+    final stopsAsync = ref.watch(stopsProvider);
+    final buildingsAsync = ref.watch(buildingsProvider);
+
+    final List<_SuggestionItem> items = [];
+
+    // Always show "Current Location" at top
+    if (query.isEmpty || 'current location'.contains(query)) {
+      items.add(
+        const _SuggestionItem(
+          'Current Location',
+          'Use device GPS',
+          SuggestionType.recent, // reuse icon style
+        ),
+      );
+    }
+
+    // Bus stop matches
+    stopsAsync.whenData((stops) {
+      for (final s in stops) {
+        if (query.isEmpty ||
+            s.longName.toLowerCase().contains(query) ||
+            s.shortName.toLowerCase().contains(query) ||
+            s.name.toLowerCase().contains(query)) {
+          items.add(
+            _SuggestionItem(
+              s.longName.isNotEmpty ? s.longName : s.name,
+              s.shortName.isNotEmpty ? s.shortName : null,
+              SuggestionType.stop,
+            ),
+          );
+        }
+      }
+    });
+
+    // Building matches
+    buildingsAsync.whenData((buildings) {
+      for (final b in buildings) {
+        if (query.isEmpty || b.name.toLowerCase().contains(query)) {
+          items.add(
+            _SuggestionItem(b.name, b.address, SuggestionType.building),
+          );
+        }
+      }
+    });
+
+    final visible = items.take(10).toList();
+
+    return KeyedSubtree(
+      key: const ValueKey('from_suggestions'),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Container(
+            color: AppTheme.primary.withValues(alpha: 0.05),
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.spacing16,
+              AppTheme.spacing8,
+              AppTheme.spacing16,
+              AppTheme.spacing4,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SELECT ORIGIN',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primary,
+                    letterSpacing: 2.0,
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacing8),
+                for (final item in visible)
+                  SuggestionTile(
+                    key: ValueKey<String>('from_suggestion_${item.name}'),
+                    name: item.name,
+                    subtitle: item.subtitle,
+                    type: item.type,
+                    onTap: () => _selectFromSuggestion(item.name),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Nearby tab ──────────────────────────────────────────────────
   Widget _buildNearbyTab() {
-    // Use a default NUS campus location as fallback
-    const lat = 1.2966;
-    const lng = 103.7764;
+    // Use live device location, fallback to NUS campus center
+    final posAsync = ref.watch(positionStreamProvider);
+    final pos = posAsync.valueOrNull;
+    final lat = pos?.latitude ?? 1.2966;
+    final lng = pos?.longitude ?? 103.7764;
     final nearbyAsync = ref.watch(nearbyStopsProvider((lat: lat, lng: lng)));
 
     return nearbyAsync.when(
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(48),
-          child: CircularProgressIndicator(color: AppTheme.primary),
-        ),
-      ),
+      loading: () => _buildShimmerList(),
       error: (e, _) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppTheme.spacing32),
           child: Text(
             'Failed to load nearby stops',
-            style: TextStyle(color: AppTheme.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       ),
@@ -402,28 +650,29 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
 
   Widget _buildNearbyStopsList(List<NearbyStopResult> stops) {
     if (stops.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppTheme.spacing32),
           child: Text(
             'No nearby stops found',
-            style: TextStyle(color: AppTheme.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       itemCount: stops.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return const Padding(
-            padding: EdgeInsets.only(bottom: 12),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
             child: Text(
               'NEARBY STOPS',
-              style: TextStyle(
-                fontSize: 10,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textMuted,
                 letterSpacing: 2.0,
@@ -433,7 +682,8 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
         }
         final stop = stops[index - 1];
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          key: ValueKey<String>('nearby_${stop.stopName}'),
+          padding: const EdgeInsets.only(bottom: AppTheme.spacing8),
           child: _NearbyStopCard(
             stop: stop,
             onTap: () => _selectSuggestion(stop.stopName),
@@ -447,21 +697,27 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
   Widget _buildRecentTab() {
     final recents = ref.watch(recentSearchesProvider);
     if (recents.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppTheme.spacing32),
           child: Text(
             'No recent searches',
-            style: TextStyle(color: AppTheme.textMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
           ),
         ),
       );
     }
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.spacing16,
+        vertical: AppTheme.spacing8,
+      ),
       children: [
         for (final r in recents)
           SuggestionTile(
+            key: ValueKey<String>('recent_$r'),
             name: r,
             type: SuggestionType.recent,
             onTap: () => _selectSuggestion(r),
@@ -473,15 +729,15 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
   // ── Route results ───────────────────────────────────────────────
   Widget _buildRouteResults() {
     final dest = _toController.text.trim();
-    final routeAsync = ref.watch(routeProvider((from: _fromValue, to: dest)));
+    final routeAsync = ref.watch(
+      routeProvider((from: _resolvedOrigin ?? _fromValue, to: dest)),
+    );
 
     return routeAsync.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(color: AppTheme.primary),
-      ),
+      loading: () => _buildShimmerList(),
       error: (e, _) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppTheme.spacing32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -490,15 +746,14 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
                 color: AppTheme.textMuted,
                 size: 40,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppTheme.spacing12),
               Text(
                 'Could not find a route',
-                style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 14,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.spacing8),
               TextButton(
                 onPressed: () => setState(() => _hasSubmitted = false),
                 child: const Text('Try again'),
@@ -513,14 +768,13 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
 
   Widget _buildRouteResultsList(RoutePlanResult result) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12),
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
           child: Text(
             'FASTEST ROUTES',
-            style: TextStyle(
-              fontSize: 10,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: AppTheme.textMuted,
               letterSpacing: 2.0,
@@ -529,14 +783,18 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
         ),
 
         // Primary route card
-        RouteCard(result: result),
+        RouteCard(key: const ValueKey('route_primary'), result: result),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTheme.spacing12),
 
         // Secondary card (dimmed) – reuse same result for visual match
-        RouteCard(result: result, dimmed: true),
+        RouteCard(
+          key: const ValueKey('route_secondary'),
+          result: result,
+          dimmed: true,
+        ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: AppTheme.spacing24),
 
         // Nearby stops section at bottom
         _buildNearbyStopsFooter(),
@@ -545,8 +803,10 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
   }
 
   Widget _buildNearbyStopsFooter() {
-    const lat = 1.2966;
-    const lng = 103.7764;
+    final posAsync = ref.watch(positionStreamProvider);
+    final pos = posAsync.valueOrNull;
+    final lat = pos?.latitude ?? 1.2966;
+    final lng = pos?.longitude ?? 103.7764;
     final nearbyAsync = ref.watch(nearbyStopsProvider((lat: lat, lng: lng)));
 
     return nearbyAsync.when(
@@ -558,12 +818,11 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
               child: Text(
                 'NEARBY STOPS',
-                style: TextStyle(
-                  fontSize: 10,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textMuted,
                   letterSpacing: 2.0,
@@ -572,14 +831,41 @@ class _SearchRoutingScreenState extends ConsumerState<SearchRoutingScreen> {
             ),
             for (final stop in visible) ...[
               _NearbyStopCard(
+                key: ValueKey<String>('footer_nearby_${stop.stopName}'),
                 stop: stop,
                 onTap: () => _selectSuggestion(stop.stopName),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppTheme.spacing8),
             ],
           ],
         );
       },
+    );
+  }
+
+  // ── Shimmer loading state ───────────────────────────────────────
+  Widget _buildShimmerList() {
+    return Padding(
+      padding: const EdgeInsets.all(AppTheme.spacing16),
+      child: Shimmer.fromColors(
+        baseColor: AppTheme.surfaceVariant,
+        highlightColor: AppTheme.neutralDark,
+        child: Column(
+          children: List.generate(
+            3,
+            (i) => Padding(
+              padding: const EdgeInsets.only(bottom: AppTheme.spacing16),
+              child: Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -596,33 +882,34 @@ class _SuggestionItem {
 // ── Nearby stop card ──────────────────────────────────────────────────
 
 class _NearbyStopCard extends StatelessWidget {
-  const _NearbyStopCard({required this.stop, this.onTap});
+  const _NearbyStopCard({super.key, required this.stop, this.onTap});
   final NearbyStopResult stop;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      child: Ink(
+        padding: const EdgeInsets.all(AppTheme.spacing12),
         decoration: BoxDecoration(
           color: AppTheme.neutralDark.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
           border: Border.all(color: AppTheme.borderDark),
         ),
         child: Row(
           children: [
             const Icon(Icons.directions_bus, color: AppTheme.primary, size: 20),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppTheme.spacing12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     stop.stopDisplayName,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: textTheme.labelMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary,
                     ),
@@ -630,8 +917,7 @@ class _NearbyStopCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     '${stop.distanceMeters.round()}m away',
-                    style: const TextStyle(
-                      fontSize: 10,
+                    style: textTheme.labelSmall?.copyWith(
                       color: AppTheme.textMuted,
                     ),
                   ),

@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:frontend/app/theme.dart';
 
 class CapacityBar extends StatelessWidget {
-  /// Number of filled segments out of 10, or null if no data.
   final int? filledSegments;
 
   const CapacityBar({super.key, required this.filledSegments});
 
-  /// Convert a passenger string ("Low", "Medium", "High", or numeric)
-  /// to a 0-10 segment count. Returns null for unknown/missing data.
   factory CapacityBar.fromPassengers(String passengers) {
     final segments = _parsePassengers(passengers);
     return CapacityBar(filledSegments: segments);
@@ -34,12 +31,19 @@ class CapacityBar extends StatelessWidget {
     }
   }
 
+  Color _segmentColor(int segments) {
+    if (segments <= 3) return AppTheme.success;
+    if (segments <= 6) return AppTheme.warning;
+    return AppTheme.error;
+  }
+
   @override
   Widget build(BuildContext context) {
     final filled = filledSegments;
     final hasData = filled != null;
     final segments = filled ?? 0;
     final percentage = (segments * 10).clamp(0, 100);
+    final activeColor = hasData ? _segmentColor(segments) : AppTheme.primary;
 
     return Row(
       children: [
@@ -47,27 +51,27 @@ class CapacityBar extends StatelessWidget {
           child: Row(
             children: List.generate(10, (i) {
               return Expanded(
-                child: Container(
+                child: AnimatedContainer(
+                  duration: AppTheme.durationMedium,
+                  curve: AppTheme.curve,
                   height: 6,
                   margin: EdgeInsets.only(right: i < 9 ? 3 : 0),
                   decoration: BoxDecoration(
                     color: hasData && i < segments
-                        ? AppTheme.primary
-                        : const Color(0xFF334155),
-                    borderRadius: BorderRadius.circular(9999),
+                        ? activeColor
+                        : AppTheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusFull),
                   ),
                 ),
               );
             }),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppTheme.spacing12),
         Text(
-          hasData ? '$percentage% FULL' : 'N/A',
-          style: const TextStyle(
-            fontSize: 10,
-            color: Color(0xFF94A3B8),
-            fontWeight: FontWeight.w500,
+          hasData ? '$percentage% full' : 'N/A',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: hasData ? activeColor : AppTheme.textMuted,
           ),
         ),
       ],

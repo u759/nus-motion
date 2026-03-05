@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/data/models/service_description.dart';
@@ -50,6 +51,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
     final favoriteRoutes = ref.watch(favoriteRoutesProvider);
     final favoriteStops = ref.watch(favoriteStopsProvider);
     final serviceDescAsync = ref.watch(serviceDescriptionsProvider);
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,
@@ -61,50 +63,65 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(
-                horizontal: 24,
+                horizontal: AppTheme.spacing24,
               ).copyWith(bottom: 100),
               children: [
                 // ── Favorite Bus Lines ────────────────────────────
-                const SizedBox(height: 32),
+                const SizedBox(height: AppTheme.spacing32),
                 _buildSectionLabel(
+                  context,
                   'FAVORITE BUS LINES',
                   trailing: Text(
                     '${favoriteRoutes.length} active',
-                    style: TextStyle(
-                      fontSize: 10,
+                    style: textTheme.labelSmall?.copyWith(
                       color: AppTheme.primary.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppTheme.spacing16),
                 if (favoriteRoutes.isEmpty)
-                  _buildEmptyHint('No favorite bus lines yet')
+                  _buildEmptyHint(context, 'No favorite bus lines yet')
                 else
                   serviceDescAsync.when(
                     data: (descriptions) =>
                         _buildRouteCards(favoriteRoutes, descriptions),
-                    loading: () => _buildRouteCards(favoriteRoutes, []),
+                    loading: () => _buildShimmerPlaceholder(),
                     error: (_, _) => _buildRouteCards(favoriteRoutes, []),
                   ),
 
                 // ── Saved Stops ───────────────────────────────────
                 const SizedBox(height: 40),
                 _buildSectionLabel(
+                  context,
                   'SAVED STOPS',
-                  trailing: GestureDetector(
-                    onTap: () {
-                      // Toggle edit mode (could be expanded later)
-                    },
-                    child: const Text(
-                      'Edit List',
-                      style: TextStyle(fontSize: 10, color: AppTheme.primary),
+                  trailing: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        // Toggle edit mode (could be expanded later)
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.spacing4,
+                          vertical: AppTheme.spacing4,
+                        ),
+                        child: Text(
+                          'Edit List',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppTheme.spacing16),
                 ...favoriteStops.map(
                   (stopName) => Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    key: ValueKey('stop_$stopName'),
+                    padding: const EdgeInsets.only(bottom: AppTheme.spacing16),
                     child: SavedStopCard(
                       stopName: stopName,
                       onDismissed: () {
@@ -120,10 +137,10 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
                 // ── Recent Activity ───────────────────────────────
                 const SizedBox(height: 40),
-                _buildSectionLabel('RECENT ACTIVITY'),
-                const SizedBox(height: 16),
-                _buildRecentActivityCard(),
-                const SizedBox(height: 32),
+                _buildSectionLabel(context, 'RECENT ACTIVITY'),
+                const SizedBox(height: AppTheme.spacing16),
+                _buildRecentActivityCard(context),
+                const SizedBox(height: AppTheme.spacing32),
               ],
             ),
           ),
@@ -135,57 +152,59 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   // ── Header ────────────────────────────────────────────────────────
 
   Widget _buildHeader(BuildContext context) {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-            ),
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+        border: Border(bottom: BorderSide(color: AppTheme.borderDark)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacing24,
+            vertical: AppTheme.spacing16,
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Row(
-                children: [
-                  const Icon(Icons.star, color: AppTheme.primary, size: 28),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Favorites',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.3,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const Spacer(),
-                  // Add button
-                  GestureDetector(
-                    onTap: () => context.go('/search'),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.03),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.add,
-                        color: AppTheme.primary,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
+          child: Row(
+            children: [
+              const Icon(Icons.star, color: AppTheme.primary, size: 28),
+              const SizedBox(width: AppTheme.spacing12),
+              Text(
+                'Favorites',
+                style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.3,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-            ),
+              const Spacer(),
+              // Add button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.go('/search');
+                  },
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.borderDark),
+                    ),
+                    child: const Icon(
+                      Icons.add,
+                      color: AppTheme.primary,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -194,13 +213,17 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
   // ── Section label ─────────────────────────────────────────────────
 
-  Widget _buildSectionLabel(String title, {Widget? trailing}) {
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String title, {
+    Widget? trailing,
+  }) {
+    final textTheme = Theme.of(context).textTheme;
     return Row(
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 12,
+          style: textTheme.labelSmall?.copyWith(
             fontWeight: FontWeight.w600,
             letterSpacing: 1.5,
             color: AppTheme.textSecondary,
@@ -225,7 +248,10 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
             .cast<ServiceDescription?>()
             .firstOrNull;
         return Padding(
-          padding: EdgeInsets.only(bottom: code != routes.last ? 12 : 0),
+          key: ValueKey('route_$code'),
+          padding: EdgeInsets.only(
+            bottom: code != routes.last ? AppTheme.spacing12 : 0,
+          ),
           child: FavoriteRouteCard(routeCode: code, description: desc),
         );
       }).toList(),
@@ -234,18 +260,45 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
   // ── Empty state hint ──────────────────────────────────────────────
 
-  Widget _buildEmptyHint(String text) {
+  // ── Shimmer loading placeholder ───────────────────────────────────
+
+  Widget _buildShimmerPlaceholder() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surfaceVariant,
+      highlightColor: AppTheme.neutralDark,
+      child: Column(
+        children: List.generate(
+          2,
+          (i) => Padding(
+            padding: EdgeInsets.only(bottom: i < 1 ? AppTheme.spacing12 : 0),
+            child: Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Empty state hint ──────────────────────────────────────────────
+
+  Widget _buildEmptyHint(BuildContext context, String text) {
+    final textTheme = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppTheme.spacing24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.borderDark),
       ),
       child: Center(
         child: Text(
           text,
-          style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+          style: textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
         ),
       ),
     );
@@ -254,25 +307,35 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   // ── Add destination card ──────────────────────────────────────────
 
   Widget _buildAddDestinationCard(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.go('/search'),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF334155)),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_circle, color: AppTheme.textMuted, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Add new destination',
-              style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-            ),
-          ],
+    final textTheme = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          context.go('/search');
+        },
+        child: Container(
+          padding: const EdgeInsets.all(AppTheme.spacing16),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: AppTheme.borderDark),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_circle, color: AppTheme.textMuted, size: 20),
+              const SizedBox(width: AppTheme.spacing8),
+              Text(
+                'Add new destination',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.textMuted,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -280,12 +343,12 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
   // ── Recent activity card ──────────────────────────────────────────
 
-  Widget _buildRecentActivityCard() {
+  Widget _buildRecentActivityCard(BuildContext context) {
     final recentTrips = ref.watch(favoritesRepositoryProvider).getRecentTrips();
 
     if (recentTrips.isEmpty) {
-      // Show placeholder matching the HTML design
       return _buildActivityTile(
+        context,
         from: 'UTown',
         to: 'Science',
         subtitle: '2 hours ago • Bus D1',
@@ -294,27 +357,30 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
     final trip = recentTrips.first;
     return _buildActivityTile(
+      context,
       from: trip['from'] ?? '',
       to: trip['to'] ?? '',
       subtitle: trip['time'] ?? 'Recently',
     );
   }
 
-  Widget _buildActivityTile({
+  Widget _buildActivityTile(
+    BuildContext context, {
     required String from,
     required String to,
     required String subtitle,
   }) {
+    final textTheme = Theme.of(context).textTheme;
     return Opacity(
       opacity: 0.6,
       child: ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.saturation),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTheme.spacing16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            color: AppTheme.surfaceVariant.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: AppTheme.borderDark),
           ),
           child: Row(
             children: [
@@ -322,7 +388,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                 width: 40,
                 height: 40,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF1E293B),
+                  color: AppTheme.surfaceVariant,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -331,15 +397,14 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                   size: 22,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppTheme.spacing16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text.rich(
                       TextSpan(
-                        style: const TextStyle(
-                          fontSize: 12,
+                        style: textTheme.bodySmall?.copyWith(
                           color: AppTheme.textPrimary,
                         ),
                         children: [
@@ -348,7 +413,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                             text: from,
                             style: const TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: Color(0xFFE2E8F0),
+                              color: AppTheme.textPrimary,
                             ),
                           ),
                           const TextSpan(text: ' to '),
@@ -356,17 +421,16 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                             text: to,
                             style: const TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: Color(0xFFE2E8F0),
+                              color: AppTheme.textPrimary,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppTheme.spacing4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 10,
+                      style: textTheme.labelSmall?.copyWith(
                         color: AppTheme.textMuted,
                       ),
                     ),

@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/data/models/nearby_stop_result.dart';
@@ -38,7 +40,6 @@ class MapDiscoveryScreen extends ConsumerStatefulWidget {
 
 class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
   GoogleMapController? _mapController;
-  Position? _currentPosition;
   int _expandedStopIndex = 0;
   String? _overlayRouteCode;
   Set<Polyline> _polylines = {};
@@ -48,7 +49,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
   @override
   void initState() {
     super.initState();
-    _determinePosition();
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       ref.invalidate(
@@ -57,7 +57,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
           lng: _queryLocation.longitude,
         )),
       );
-      // Collect route codes from cached shuttle data before invalidating
       final routeCodes = <String>{};
       for (final name in _visibleStopNames) {
         final shuttleData = ref.read(shuttlesProvider(name));
@@ -68,7 +67,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
         });
         ref.invalidate(shuttlesProvider(name));
       }
-      // Refresh active buses for all visible routes (capacity data)
       for (final route in routeCodes) {
         ref.invalidate(activeBusesProvider(route));
       }
@@ -85,39 +83,32 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
     super.dispose();
   }
 
-  Future<void> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-    if (permission == LocationPermission.deniedForever) return;
-
-    final pos = await Geolocator.getCurrentPosition();
-    if (mounted) setState(() => _currentPosition = pos);
-  }
+  Position? get _currentPosition =>
+      ref.read(positionStreamProvider).valueOrNull;
 
   void _centerOnCurrentLocation() {
-    final target = _currentPosition != null
-        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+    HapticFeedback.lightImpact();
+    final pos = _currentPosition;
+    final target = pos != null
+        ? LatLng(pos.latitude, pos.longitude)
         : _kNusCampus;
     _mapController?.animateCamera(CameraUpdate.newLatLng(target));
   }
 
   void _zoomIn() {
+    HapticFeedback.selectionClick();
     _mapController?.animateCamera(CameraUpdate.zoomIn());
   }
 
   void _zoomOut() {
+    HapticFeedback.selectionClick();
     _mapController?.animateCamera(CameraUpdate.zoomOut());
   }
 
-  LatLng get _queryLocation => _currentPosition != null
-      ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-      : _kNusCampus;
+  LatLng get _queryLocation {
+    final pos = _currentPosition;
+    return pos != null ? LatLng(pos.latitude, pos.longitude) : _kNusCampus;
+  }
 
   void _showRouteOverlay(String routeCode) {
     setState(() => _overlayRouteCode = routeCode);
@@ -125,6 +116,10 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch live position stream — triggers rebuild on movement
+    final posAsync = ref.watch(positionStreamProvider);
+    final pos = posAsync.valueOrNull;
+
     final nearbyAsync = ref.watch(
       nearbyStopsProvider((
         lat: _queryLocation.latitude,
@@ -132,7 +127,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
       )),
     );
 
-    // Build route polyline when a route is selected
     if (_overlayRouteCode != null) {
       final checkpointsAsync = ref.watch(
         checkpointsProvider(_overlayRouteCode!),
@@ -154,16 +148,12 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
       });
     }
 
-    // Build markers
     final markers = <Marker>{};
-    if (_currentPosition != null) {
+    if (pos != null) {
       markers.add(
         Marker(
           markerId: const MarkerId('current_location'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
+          position: LatLng(pos.latitude, pos.longitude),
           icon: BitmapDescriptor.defaultMarkerWithHue(
             BitmapDescriptor.hueAzure,
           ),
@@ -194,16 +184,14 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // ── Google Map ────────────────────────────────────
+          // ── Google Map ──────────────────────────────────────
           GoogleMap(
             initialCameraPosition: const CameraPosition(
               target: _kNusCampus,
               zoom: _kDefaultZoom,
             ),
             style: _kDarkMapStyle,
-            onMapCreated: (controller) {
-              _mapController = controller;
-            },
+            onMapCreated: (controller) => _mapController = controller,
             markers: markers,
             polylines: _polylines,
             myLocationEnabled: false,
@@ -213,193 +201,41 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
             compassEnabled: false,
           ),
 
-          // ── Top Header + Search ──────────────────────────
+          // ── Top Header + Search ────────────────────────────
           SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppTheme.spacing16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildTopBar(),
-                  const SizedBox(height: 16),
-                  _buildSearchBar(context),
+                  _TopBar(),
+                  const SizedBox(height: AppTheme.spacing16),
+                  _SearchBar(),
                 ],
               ),
             ),
           ),
 
-          // ── Map Controls (right side) ────────────────────
+          // ── Map Controls (right side) ──────────────────────
           Positioned(
-            right: 16,
+            right: AppTheme.spacing16,
             bottom: MediaQuery.of(context).size.height * 0.42,
-            child: _buildMapControls(),
+            child: _MapControls(
+              onMyLocation: _centerOnCurrentLocation,
+              onZoomIn: _zoomIn,
+              onZoomOut: _zoomOut,
+            ),
           ),
 
-          // ── Bottom Drawer ────────────────────────────────
+          // ── Bottom Drawer ──────────────────────────────────
           _buildBottomSheet(nearbyAsync),
         ],
       ),
     );
   }
 
-  // ── Top bar ──────────────────────────────────────────────────────────
-
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        _glassIconButton(Icons.menu),
-        const Text(
-          'NUS Motion',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.3,
-            color: Color(0xFFF1F5F9),
-          ),
-        ),
-        _glassIconButton(Icons.person),
-      ],
-    );
-  }
-
-  Widget _glassIconButton(IconData icon) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppTheme.backgroundDark.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-          ),
-          child: Icon(icon, color: AppTheme.primary, size: 22),
-        ),
-      ),
-    );
-  }
-
-  // ── Search bar ───────────────────────────────────────────────────────
-
-  Widget _buildSearchBar(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.go('/search'),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              color: AppTheme.backgroundDark.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.primary.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.search,
-                  color: AppTheme.primary.withValues(alpha: 0.7),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Search destinations, lines, or stops',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Map controls ─────────────────────────────────────────────────────
-
-  Widget _buildMapControls() {
-    return Column(
-      children: [
-        _mapControlButton(Icons.my_location, _centerOnCurrentLocation),
-        const SizedBox(height: 12),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppTheme.backgroundDark.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppTheme.primary.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Column(
-                children: [
-                  _zoomButton(Icons.add, _zoomIn, showBottomBorder: true),
-                  _zoomButton(Icons.remove, _zoomOut),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _mapControlButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            height: 48,
-            width: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.backgroundDark.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.primary.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Icon(icon, color: AppTheme.primary),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _zoomButton(
-    IconData icon,
-    VoidCallback onTap, {
-    bool showBottomBorder = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          border: showBottomBorder
-              ? Border(
-                  bottom: BorderSide(
-                    color: AppTheme.primary.withValues(alpha: 0.1),
-                  ),
-                )
-              : null,
-        ),
-        child: Icon(icon, color: AppTheme.primary),
-      ),
-    );
-  }
-
-  // ── Bottom Sheet ─────────────────────────────────────────────────────
+  // ── Bottom Sheet ─────────────────────────────────────────────────
 
   Widget _buildBottomSheet(AsyncValue<List<NearbyStopResult>> nearbyAsync) {
     return DraggableScrollableSheet(
@@ -410,15 +246,14 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
       snapSizes: const [0.1, 0.38, 0.85],
       builder: (context, scrollController) {
         return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppTheme.radiusXl),
+          ),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xCC101B22), // rgba(16,27,34,0.8)
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(32),
-                ),
+                color: AppTheme.backgroundDark.withValues(alpha: 0.92),
                 border: Border(
                   top: BorderSide(
                     color: AppTheme.primary.withValues(alpha: 0.2),
@@ -432,53 +267,51 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
                   // Drag handle
                   Center(
                     child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      height: 6,
-                      width: 48,
+                      margin: const EdgeInsets.symmetric(
+                        vertical: AppTheme.spacing12,
+                      ),
+                      height: 4,
+                      width: 40,
                       decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(9999),
+                        color: AppTheme.textMuted.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.radiusFull,
+                        ),
                       ),
                     ),
                   ),
                   // Header
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppTheme.spacing24,
+                      0,
+                      AppTheme.spacing24,
+                      AppTheme.spacing16,
+                    ),
                     child: Text(
                       'Nearby Stops',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFF1F5F9),
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
                   // Stop cards
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.spacing24,
+                    ),
                     child: nearbyAsync.when(
                       data: (stops) => _buildStopList(stops),
-                      loading: () => const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(
-                            color: AppTheme.primary,
-                          ),
-                        ),
-                      ),
-                      error: (e, _) => Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Could not load nearby stops',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 13,
-                          ),
+                      loading: () => _buildShimmerList(),
+                      error: (e, _) => _buildErrorState(
+                        'Could not load nearby stops',
+                        onRetry: () => ref.invalidate(
+                          nearbyStopsProvider((
+                            lat: _queryLocation.latitude,
+                            lng: _queryLocation.longitude,
+                          )),
                         ),
                       ),
                     ),
                   ),
-                  // Extra padding so content doesn't sit under bottom nav
                   const SizedBox(height: 100),
                 ],
               ),
@@ -491,11 +324,21 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
 
   Widget _buildStopList(List<NearbyStopResult> stops) {
     if (stops.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'No nearby stops found',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+      return Padding(
+        padding: const EdgeInsets.all(AppTheme.spacing24),
+        child: Column(
+          children: [
+            Icon(
+              Icons.location_off_outlined,
+              color: AppTheme.textMuted,
+              size: 40,
+            ),
+            const SizedBox(height: AppTheme.spacing12),
+            Text(
+              'No nearby stops found',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
         ),
       );
     }
@@ -504,11 +347,15 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
       children: [
         for (int i = 0; i < stops.length; i++)
           Padding(
-            padding: EdgeInsets.only(bottom: i < stops.length - 1 ? 16 : 0),
+            padding: EdgeInsets.only(
+              bottom: i < stops.length - 1 ? AppTheme.spacing16 : 0,
+            ),
             child: StopCard(
+              key: ValueKey(stops[i].stopName),
               stop: stops[i],
               isExpanded: _expandedStopIndex == i,
               onToggle: () {
+                HapticFeedback.selectionClick();
                 setState(() {
                   _expandedStopIndex = _expandedStopIndex == i ? -1 : i;
                 });
@@ -517,6 +364,271 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildShimmerList() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surfaceVariant,
+      highlightColor: AppTheme.neutralDark,
+      child: Column(
+        children: List.generate(
+          3,
+          (i) => Padding(
+            padding: const EdgeInsets.only(bottom: AppTheme.spacing16),
+            child: Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message, {VoidCallback? onRetry}) {
+    return Padding(
+      padding: const EdgeInsets.all(AppTheme.spacing24),
+      child: Column(
+        children: [
+          Icon(Icons.cloud_off_outlined, color: AppTheme.textMuted, size: 40),
+          const SizedBox(height: AppTheme.spacing12),
+          Text(message, style: Theme.of(context).textTheme.bodyMedium),
+          if (onRetry != null) ...[
+            const SizedBox(height: AppTheme.spacing16),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Extracted Widgets ──────────────────────────────────────────────────
+
+class _TopBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _GlassIconButton(icon: Icons.menu, onTap: () {}),
+        Text(
+          'NUS Motion',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(letterSpacing: -0.5),
+        ),
+        _GlassIconButton(icon: Icons.person, onTap: () {}),
+      ],
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _GlassIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Material(
+          color: AppTheme.backgroundDark.withValues(alpha: 0.8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.2)),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(icon, color: AppTheme.primary, size: 22),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Material(
+          color: AppTheme.backgroundDark.withValues(alpha: 0.9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+            side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.2)),
+          ),
+          child: InkWell(
+            onTap: () => context.go('/search'),
+            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.spacing16,
+                vertical: AppTheme.spacing16,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.search,
+                    color: AppTheme.primary.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: AppTheme.spacing12),
+                  Text(
+                    'Search destinations, lines, or stops',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapControls extends StatelessWidget {
+  final VoidCallback onMyLocation;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  const _MapControls({
+    required this.onMyLocation,
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _GlassControlButton(
+          icon: Icons.my_location,
+          onTap: onMyLocation,
+          circular: true,
+        ),
+        const SizedBox(height: AppTheme.spacing12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundDark.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _ZoomButton(
+                    icon: Icons.add,
+                    onTap: onZoomIn,
+                    showBorder: true,
+                  ),
+                  _ZoomButton(icon: Icons.remove, onTap: onZoomOut),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GlassControlButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool circular;
+
+  const _GlassControlButton({
+    required this.icon,
+    required this.onTap,
+    this.circular = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Material(
+          color: AppTheme.backgroundDark.withValues(alpha: 0.9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+            side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.2)),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+            child: SizedBox(
+              height: 48,
+              width: 48,
+              child: Icon(icon, color: AppTheme.primary),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool showBorder;
+
+  const _ZoomButton({
+    required this.icon,
+    required this.onTap,
+    this.showBorder = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          width: 48,
+          decoration: showBorder
+              ? BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: AppTheme.primary.withValues(alpha: 0.1),
+                    ),
+                  ),
+                )
+              : null,
+          child: Icon(icon, color: AppTheme.primary),
+        ),
+      ),
     );
   }
 }

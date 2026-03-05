@@ -26,23 +26,26 @@ class SuggestionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacing8,
+          vertical: AppTheme.spacing8,
+        ),
         child: Row(
           children: [
             Icon(_icon, color: AppTheme.textMuted, size: 22),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppTheme.spacing12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     name,
-                    style: const TextStyle(
-                      fontSize: 14,
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                       color: AppTheme.textPrimary,
                     ),
@@ -51,8 +54,7 @@ class SuggestionTile extends StatelessWidget {
                     const SizedBox(height: 1),
                     Text(
                       subtitle!,
-                      style: const TextStyle(
-                        fontSize: 11,
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: AppTheme.textMuted,
                       ),
                     ),
@@ -60,8 +62,8 @@ class SuggestionTile extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.north_west, color: Color(0xFF475569), size: 16),
+            const SizedBox(width: AppTheme.spacing8),
+            const Icon(Icons.north_west, color: AppTheme.textMuted, size: 16),
           ],
         ),
       ),

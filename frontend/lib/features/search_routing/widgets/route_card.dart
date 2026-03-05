@@ -10,9 +10,9 @@ Color _badgeColor(String code) {
   if (c.startsWith('A')) return AppTheme.primary;
   if (c.startsWith('D')) return Colors.orange;
   if (c.startsWith('K')) return const Color(0xFF8B5CF6);
-  if (c.startsWith('E')) return const Color(0xFF10B981);
-  if (c.startsWith('B')) return const Color(0xFFEF4444);
-  return const Color(0xFF64748B); // slate fallback
+  if (c.startsWith('E')) return AppTheme.success;
+  if (c.startsWith('B')) return AppTheme.error;
+  return AppTheme.textMuted;
 }
 
 class RouteCard extends StatelessWidget {
@@ -29,7 +29,6 @@ class RouteCard extends StatelessWidget {
   final bool dimmed;
   final VoidCallback? onViewSteps;
 
-  // Extract unique bus route codes for badge row.
   List<String> get _busRouteCodes => result.legs
       .where((l) => l.mode == 'BUS' && l.routeCode != null)
       .map((l) => l.routeCode!)
@@ -38,6 +37,7 @@ class RouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final arrival = TimeOfDay.now().replacing(
       hour:
           (TimeOfDay.now().hour +
@@ -52,13 +52,12 @@ class RouteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.neutralDark,
         border: Border.all(color: AppTheme.borderDark),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Top row: badges + time ──────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -68,18 +67,14 @@ class RouteCard extends StatelessWidget {
                 children: [
                   Text(
                     '${result.totalMinutes.round()} min',
-                    style: TextStyle(
-                      fontSize: 18,
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: dimmed
-                          ? const Color(0xFFCBD5E1)
-                          : AppTheme.primary,
+                      color: dimmed ? AppTheme.textSecondary : AppTheme.primary,
                     ),
                   ),
                   Text(
                     'Arriving $arrivalStr',
-                    style: const TextStyle(
-                      fontSize: 10,
+                    style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textMuted,
                       letterSpacing: 0.5,
@@ -90,14 +85,12 @@ class RouteCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: AppTheme.spacing16),
 
-          // ── Timeline ────────────────────────────────────────────
-          if (!dimmed) _buildTimeline(),
+          if (!dimmed) _buildTimeline(context),
 
-          // ── "View Step-by-Step" button ──────────────────────────
           if (!dimmed) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing16),
             SizedBox(
               width: double.infinity,
               child: TextButton(
@@ -106,11 +99,10 @@ class RouteCard extends StatelessWidget {
                   backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                   foregroundColor: AppTheme.primary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
+                  textStyle: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -119,18 +111,16 @@ class RouteCard extends StatelessWidget {
             ),
           ],
 
-          // ── Info line for dimmed card ────────────────────────────
           if (dimmed) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppTheme.spacing12),
             Row(
               children: [
                 const Icon(Icons.info, color: AppTheme.textMuted, size: 20),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppTheme.spacing12),
                 Expanded(
                   child: Text(
                     _buildInfoSummary(),
-                    style: const TextStyle(
-                      fontSize: 11,
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.textSecondary,
                     ),
                   ),
@@ -148,7 +138,6 @@ class RouteCard extends StatelessWidget {
     return card;
   }
 
-  // ── Badge row ───────────────────────────────────────────────────────
   Widget _buildBadges() {
     final codes = _busRouteCodes;
     if (codes.isEmpty) return const SizedBox.shrink();
@@ -157,7 +146,7 @@ class RouteCard extends StatelessWidget {
       if (i > 0) {
         widgets.add(
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: EdgeInsets.symmetric(horizontal: AppTheme.spacing4),
             child: Icon(
               Icons.chevron_right,
               color: AppTheme.textMuted,
@@ -174,11 +163,9 @@ class RouteCard extends StatelessWidget {
     );
   }
 
-  // ── Timeline ────────────────────────────────────────────────────────
-  Widget _buildTimeline() {
+  Widget _buildTimeline(BuildContext context) {
     return Stack(
       children: [
-        // Vertical connector
         Positioned(
           left: 11,
           top: 8,
@@ -188,8 +175,11 @@ class RouteCard extends StatelessWidget {
         Column(
           children: [
             for (var i = 0; i < result.legs.length; i++) ...[
-              if (i > 0) const SizedBox(height: 12),
-              _LegRow(leg: result.legs[i]),
+              if (i > 0) const SizedBox(height: AppTheme.spacing12),
+              _LegRow(
+                key: ValueKey('leg_${i}_${result.legs[i].mode}'),
+                leg: result.legs[i],
+              ),
             ],
           ],
         ),
@@ -204,8 +194,6 @@ class RouteCard extends StatelessWidget {
   }
 }
 
-// ── Route badge chip ──────────────────────────────────────────────────
-
 class _RouteBadge extends StatelessWidget {
   const _RouteBadge({required this.code, required this.color});
   final String code;
@@ -213,16 +201,19 @@ class _RouteBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.spacing8,
+        vertical: AppTheme.spacing4,
+      ),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppTheme.spacing4),
       ),
       child: Text(
         code,
-        style: const TextStyle(
-          fontSize: 10,
+        style: theme.textTheme.bodySmall?.copyWith(
           fontWeight: FontWeight.w900,
           color: Colors.white,
         ),
@@ -231,10 +222,8 @@ class _RouteBadge extends StatelessWidget {
   }
 }
 
-// ── Single leg row with icon ──────────────────────────────────────────
-
 class _LegRow extends StatelessWidget {
-  const _LegRow({required this.leg});
+  const _LegRow({super.key, required this.leg});
   final RouteLeg leg;
 
   @override
@@ -243,8 +232,8 @@ class _LegRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildCircle(),
-        const SizedBox(width: 16),
-        Expanded(child: _buildContent()),
+        const SizedBox(width: AppTheme.spacing16),
+        Expanded(child: _buildContent(context)),
       ],
     );
   }
@@ -280,9 +269,9 @@ class _LegRow extends StatelessWidget {
       ),
       'WAIT' => (
         AppTheme.backgroundDark,
-        const Color(0xFF64748B),
+        AppTheme.textMuted,
         Icons.schedule,
-        const Color(0xFF64748B),
+        AppTheme.textMuted,
         false,
       ),
       _ => (
@@ -315,39 +304,36 @@ class _LegRow extends StatelessWidget {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Main instruction line
         Row(
           children: [
             Expanded(
               child: Text(
                 leg.instruction,
-                style: const TextStyle(
-                  fontSize: 12,
+                style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textPrimary,
                 ),
               ),
             ),
             if (leg.mode == 'BUS')
-              const Text(
+              Text(
                 'Arriving in 2m',
-                style: TextStyle(
-                  fontSize: 11,
+                style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF4ADE80), // green-400
+                  color: AppTheme.success,
                 ),
               ),
           ],
         ),
         const SizedBox(height: 2),
-        // Subtitle
         Text(
           _subtitle,
-          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+          style: theme.textTheme.bodySmall?.copyWith(color: AppTheme.textMuted),
         ),
       ],
     );

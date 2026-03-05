@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/eta_formatter.dart';
@@ -14,20 +15,20 @@ class SavedStopAlertCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final shuttlesAsync = ref.watch(shuttlesProvider(stopName));
 
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1E293B)),
+        color: AppTheme.backgroundDark,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.surfaceVariant),
       ),
       child: Column(
         children: [
-          // ── Header ─────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppTheme.spacing16),
             child: Row(
               children: [
                 Expanded(
@@ -36,9 +37,7 @@ class SavedStopAlertCard extends ConsumerWidget {
                     children: [
                       Text(
                         stopName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           color: AppTheme.textPrimary,
                         ),
                       ),
@@ -46,11 +45,9 @@ class SavedStopAlertCard extends ConsumerWidget {
                         const SizedBox(height: 2),
                         Text(
                           'STOP ID: $stopId',
-                          style: const TextStyle(
-                            fontSize: 10,
+                          style: theme.textTheme.bodySmall?.copyWith(
                             fontWeight: FontWeight.bold,
                             letterSpacing: 2,
-                            color: AppTheme.textMuted,
                           ),
                         ),
                       ],
@@ -61,28 +58,15 @@ class SavedStopAlertCard extends ConsumerWidget {
               ],
             ),
           ),
-          Container(height: 1, color: const Color(0xFF1E293B)),
-          // ── Bus rows ───────────────────────────────────────
+          Container(height: 1, color: AppTheme.surfaceVariant),
           shuttlesAsync.when(
             data: (result) => _buildShuttleRows(result.shuttles),
-            loading: () => const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppTheme.primary,
-                  ),
-                ),
-              ),
-            ),
-            error: (_, _) => const Padding(
-              padding: EdgeInsets.all(16),
+            loading: () => _buildShimmerRows(),
+            error: (_, _) => Padding(
+              padding: const EdgeInsets.all(AppTheme.spacing16),
               child: Text(
                 'Unable to load arrivals',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: theme.textTheme.bodySmall,
               ),
             ),
           ),
@@ -91,13 +75,52 @@ class SavedStopAlertCard extends ConsumerWidget {
     );
   }
 
+  Widget _buildShimmerRows() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surfaceVariant,
+      highlightColor: AppTheme.neutralDark,
+      child: Column(
+        children: List.generate(
+          2,
+          (i) => Padding(
+            padding: const EdgeInsets.all(AppTheme.spacing16),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(AppTheme.spacing4),
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spacing12),
+                Expanded(
+                  child: Container(
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppTheme.spacing4),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildShuttleRows(List<Shuttle> shuttles) {
     if (shuttles.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text(
-          'No active services',
-          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+      return Padding(
+        padding: const EdgeInsets.all(AppTheme.spacing16),
+        child: Builder(
+          builder: (context) => Text(
+            'No active services',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       );
     }
@@ -105,8 +128,11 @@ class SavedStopAlertCard extends ConsumerWidget {
     return Column(
       children: [
         for (int i = 0; i < shuttles.length; i++) ...[
-          if (i > 0) Container(height: 1, color: const Color(0xFF1E293B)),
-          _ShuttleRow(shuttle: shuttles[i]),
+          if (i > 0) Container(height: 1, color: AppTheme.surfaceVariant),
+          _ShuttleRow(
+            key: ValueKey('shuttle_${shuttles[i].name}'),
+            shuttle: shuttles[i],
+          ),
         ],
       ],
     );
@@ -116,46 +142,43 @@ class SavedStopAlertCard extends ConsumerWidget {
 class _ShuttleRow extends StatelessWidget {
   final Shuttle shuttle;
 
-  const _ShuttleRow({required this.shuttle});
+  const _ShuttleRow({super.key, required this.shuttle});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final etaText = formatEta(shuttle.arrivalTime);
     final nextEta = formatEta(shuttle.nextArrivalTime);
     final isDelayed = (int.tryParse(shuttle.arrivalTime) ?? 0) > 10;
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Row(
         children: [
-          // Route badge
           Container(
             width: 32,
             height: 32,
             decoration: BoxDecoration(
               color: AppTheme.primary,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(AppTheme.spacing4),
             ),
             alignment: Alignment.center,
             child: Text(
               shuttle.name,
-              style: const TextStyle(
-                fontSize: 12,
+              style: theme.textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          // Destination + status
+          const SizedBox(width: AppTheme.spacing12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   shuttle.name,
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
                   ),
@@ -164,18 +187,17 @@ class _ShuttleRow extends StatelessWidget {
                 if (isDelayed)
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.warning,
                         size: 12,
-                        color: const Color(0xFFFFBF00),
+                        color: AppTheme.warning,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppTheme.spacing4),
                       Text(
                         'Delayed',
-                        style: TextStyle(
-                          fontSize: 10,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: const Color(0xFFFFBF00),
+                          color: AppTheme.warning,
                         ),
                       ),
                     ],
@@ -183,16 +205,15 @@ class _ShuttleRow extends StatelessWidget {
                 else
                   Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.info_outline,
                         size: 12,
                         color: AppTheme.primary,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: AppTheme.spacing4),
                       Text(
                         'On Time',
-                        style: TextStyle(
-                          fontSize: 10,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: AppTheme.primary,
                         ),
@@ -202,26 +223,19 @@ class _ShuttleRow extends StatelessWidget {
               ],
             ),
           ),
-          // ETA
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 etaText,
-                style: TextStyle(
-                  fontSize: 18,
+                style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: isDelayed
-                      ? const Color(0xFFFFBF00)
-                      : AppTheme.textPrimary,
+                  color: isDelayed ? AppTheme.warning : AppTheme.textPrimary,
                   height: 1,
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                'Following: $nextEta',
-                style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
-              ),
+              Text('Following: $nextEta', style: theme.textTheme.bodySmall),
             ],
           ),
         ],

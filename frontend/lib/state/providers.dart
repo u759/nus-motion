@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/storage/local_storage.dart';
@@ -29,6 +32,32 @@ final transitServiceProvider = Provider<TransitService>(
 final favoritesRepositoryProvider = Provider<FavoritesRepository>(
   (ref) => FavoritesRepository(ref.watch(localStorageProvider)),
 );
+
+// ── Live location stream ──────────────────────────────────────────────
+
+/// Streams device position updates. Falls back gracefully if permission denied.
+final positionStreamProvider = StreamProvider<Position>((ref) async* {
+  bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) return;
+
+  LocationPermission permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied) return;
+  }
+  if (permission == LocationPermission.deniedForever) return;
+
+  // Emit current position immediately, then stream updates.
+  final current = await Geolocator.getCurrentPosition();
+  yield current;
+
+  yield* Geolocator.getPositionStream(
+    locationSettings: const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 15, // update every 15m of movement
+    ),
+  );
+});
 
 // ── Transit data (cached via TransitService) ──────────────────────────
 
