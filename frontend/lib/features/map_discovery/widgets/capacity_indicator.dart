@@ -56,8 +56,9 @@ class CapacityIndicator extends StatelessWidget {
     if (val == null) {
       if (passengers.toLowerCase().contains('low')) return _CrowdLevel.low;
       if (passengers.toLowerCase().contains('high') ||
-          passengers.toLowerCase().contains('full'))
+          passengers.toLowerCase().contains('full')) {
         return _CrowdLevel.high;
+      }
       return _CrowdLevel.medium;
     }
     if (val < 30) return _CrowdLevel.low;

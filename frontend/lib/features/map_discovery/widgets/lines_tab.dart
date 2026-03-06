@@ -508,7 +508,7 @@ class _ActiveBusRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${speed} km/h',
+                  '$speed km/h',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,

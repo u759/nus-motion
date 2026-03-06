@@ -17,8 +17,9 @@ class ApiException implements Exception {
       case DioExceptionType.badResponse:
         final code = e.response?.statusCode;
         if (code == 404) return ApiException('Not found', statusCode: code);
-        if (code == 422)
+        if (code == 422) {
           return ApiException('Invalid request', statusCode: code);
+        }
         if (code != null && code >= 500) {
           return ApiException(
             'Service temporarily unavailable',

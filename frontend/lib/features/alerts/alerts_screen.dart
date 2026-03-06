@@ -6,7 +6,6 @@ import 'package:frontend/core/constants/app_constants.dart';
 import 'package:frontend/core/widgets/loading_shimmer.dart';
 import 'package:frontend/core/widgets/error_card.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
-import 'package:frontend/core/utils/weather_mapper.dart';
 import 'package:frontend/data/models/announcement.dart';
 import 'package:frontend/data/models/ticker_tape.dart';
 import 'package:frontend/state/providers.dart';

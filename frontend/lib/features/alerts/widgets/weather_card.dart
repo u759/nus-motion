@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/weather_mapper.dart';
 import 'package:frontend/data/models/weather_snapshot.dart';
 

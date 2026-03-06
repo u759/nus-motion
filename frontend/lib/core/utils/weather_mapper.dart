@@ -15,10 +15,12 @@ class WeatherMapper {
     if (code <= 69) return const WeatherInfo(Icons.water_drop, 'Rain');
     if (code <= 79) return const WeatherInfo(Icons.ac_unit, 'Snow');
     if (code <= 84) return const WeatherInfo(Icons.water_drop, 'Rain showers');
-    if (code <= 94)
+    if (code <= 94) {
       return const WeatherInfo(Icons.thunderstorm, 'Thunderstorm');
-    if (code <= 99)
+    }
+    if (code <= 99) {
       return const WeatherInfo(Icons.thunderstorm, 'Thunderstorm with hail');
+    }
     return const WeatherInfo(Icons.help_outline, 'Unknown');
   }
 }

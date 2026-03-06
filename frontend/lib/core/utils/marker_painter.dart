@@ -232,7 +232,7 @@ class MarkerPainter {
 
     // --- Pre-measure the label ---
     final labelText = [
-      if (plate != null) plate,
+      ?plate,
       if (speed != null) '$speed km/h',
       if (crowdLevel != null && crowdLevel != 'Unknown') crowdLevel,
     ].join(' · ');
