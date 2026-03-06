@@ -12,11 +12,21 @@ import 'package:frontend/core/widgets/error_card.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/data/models/active_bus.dart';
 import 'package:frontend/data/models/bus_stop.dart';
+import 'package:frontend/data/models/building.dart';
+import 'package:frontend/data/models/nearby_stop_result.dart';
+import 'package:frontend/data/models/route_leg.dart';
+import 'package:frontend/data/models/route_plan_result.dart';
 import 'package:frontend/state/providers.dart';
 import 'package:frontend/core/utils/marker_painter.dart';
 import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/features/map_discovery/widgets/stops_tab.dart';
 import 'package:frontend/features/map_discovery/widgets/lines_tab.dart';
+import 'package:frontend/features/map_discovery/widgets/bus_overlay_marker.dart';
+import 'package:frontend/features/map_discovery/widgets/search_dropdown.dart';
+import 'package:frontend/features/map_discovery/widgets/route_suggestions_panel.dart';
+import 'package:frontend/features/map_discovery/widgets/route_detail_view.dart';
+import 'package:frontend/features/map_discovery/models/navigation_state.dart';
+import 'package:frontend/features/map_discovery/utils/route_geometry.dart';
 
 class MapDiscoveryScreen extends ConsumerStatefulWidget {
   const MapDiscoveryScreen({super.key});
@@ -29,32 +39,63 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   GoogleMapController? _mapController;
   Timer? _pollTimer;
+  Timer? _highlightFlashTimer;
   Position? _lastPosition;
 
   // Map selection state
   String? _selectedRoute;
-  String? _selectedStop; // stop name
+  String? _selectedStop; // stop name — controls detail view in StopsTab
+  String? _highlightedStop; // marker highlight only — no detail view
   String? _selectedBusPlate;
 
   // Tab
   late final TabController _tabController;
 
-  // Custom marker icons
+  // Custom marker icons (stops only — buses use overlay)
   BitmapDescriptor? _stopIcon;
   BitmapDescriptor? _selectedStopIcon;
-  Map<String, BitmapDescriptor> _perBusIcons = {};
-  Map<String, (BitmapDescriptor, Offset)> _perBusSelectedIcons = {};
+  BitmapDescriptor? _destinationIcon;
 
   // Panel height (state variable for dynamic adjustment)
   double _panelHeight = 0;
 
+  // Map top padding (for overlay positioning)
+  double _mapTopPadding = 0;
+
+  // Device pixel ratio for marker rendering
+  double _dpr = 2.0;
+
   // Route polyline animation
   AnimationController? _routeAnimController;
+
+  // Bus overlay screen positions (for GPU-accelerated animation)
+  Map<String, Offset> _busScreenPositions = {};
+
+  // Track previous bus lat/lng to detect actual position changes (vs camera movement)
+  final Map<String, LatLng> _previousBusPositions = {};
+  Set<String> _busesWithPositionChange = {};
+
+  // Camera position for synchronous projection
+  CameraPosition? _currentCameraPosition;
+
+  // Map widget key for getting dimensions
+  final GlobalKey _mapKey = GlobalKey();
+
+  // Last known map size for resize detection
+  Size? _lastMapSize;
 
   static const _nusCenter = LatLng(
     AppConstants.nusLatitude,
     AppConstants.nusLongitude,
   );
+
+  // Minimal map style — suppress POIs, transit labels, and visual clutter
+  static const _mapStyle = '''
+[
+  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"featureType":"transit","stylers":[{"visibility":"off"}]}
+]
+''';
 
   @override
   void initState() {
@@ -62,6 +103,19 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _initLocation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final newDpr = MediaQuery.devicePixelRatioOf(context);
+    if (newDpr != _dpr ||
+        _stopIcon == null ||
+        _selectedStopIcon == null ||
+        _destinationIcon == null) {
+      _dpr = newDpr;
+      _generateIcons();
+    }
   }
 
   Future<void> _initLocation() async {
@@ -80,12 +134,12 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       // Location unavailable
     }
     _startPolling();
-    _generateIcons();
   }
 
   Future<void> _generateIcons() async {
-    _stopIcon = await MarkerPainter.createStopMarker();
-    _selectedStopIcon = await MarkerPainter.createSelectedStopMarker();
+    _stopIcon = await MarkerPainter.createStopMarker(dpr: _dpr);
+    _selectedStopIcon = await MarkerPainter.createSelectedStopMarker(dpr: _dpr);
+    _destinationIcon = await MarkerPainter.createDestinationMarker(dpr: _dpr);
     if (mounted) setState(() {});
   }
 
@@ -106,26 +160,68 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     final deselecting = _selectedStop == stopName;
     setState(() {
       _selectedStop = deselecting ? null : stopName;
+      _highlightedStop = deselecting ? null : stopName; // Sync highlight
       _selectedBusPlate = null;
       _scrollToSelection = fromMap;
     });
     if (_tabController.index != 0) _tabController.animateTo(0);
 
-    // Center map when selecting from list (not from map tap)
-    if (!fromMap && !deselecting) {
+    // Center map on the selected stop (not when deselecting)
+    if (!deselecting) {
       final allStops = ref.read(stopsProvider);
       allStops.whenData((stops) {
-        final stop = stops.cast<BusStop?>().firstWhere(
-          (s) => s!.name == stopName,
-          orElse: () => null,
-        );
-        if (stop != null) {
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLng(LatLng(stop.latitude, stop.longitude)),
-          );
+        for (final s in stops) {
+          if (s.name == stopName) {
+            _mapController?.animateCamera(
+              CameraUpdate.newLatLng(LatLng(s.latitude, s.longitude)),
+            );
+            break;
+          }
         }
       });
     }
+  }
+
+  /// Centers the map on a stop and highlights the marker (without opening detail view).
+  void _locateStop(String stopName) {
+    setState(() {
+      _highlightedStop = stopName;
+      // Don't set _selectedStop — keeps list view
+    });
+
+    // Center the map on the stop
+    final allStops = ref.read(stopsProvider);
+    allStops.whenData((stops) {
+      BusStop? stop;
+      for (final s in stops) {
+        if (s.name == stopName) {
+          stop = s;
+          break;
+        }
+      }
+      if (stop != null) {
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLng(LatLng(stop.latitude, stop.longitude)),
+        );
+      }
+    });
+  }
+
+  /// Flashes the marker highlight briefly (for timeline tap feedback).
+  void _flashHighlightStop(String stopCode) {
+    _highlightFlashTimer?.cancel();
+
+    setState(() {
+      _highlightedStop = stopCode;
+    });
+
+    _highlightFlashTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && _highlightedStop == stopCode) {
+        setState(() {
+          _highlightedStop = null;
+        });
+      }
+    });
   }
 
   void _selectRoute(String routeCode, {bool fromMap = false}) {
@@ -133,6 +229,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     setState(() {
       _selectedRoute = deselecting ? null : routeCode;
       _selectedBusPlate = null;
+      _highlightedStop = null; // Clear stop highlight when route selected
       _scrollToSelection = fromMap;
     });
     if (deselecting) {
@@ -143,11 +240,24 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   void _selectBus(String route, ActiveBus bus) {
-    _selectRoute(route, fromMap: true);
+    final deselecting = _selectedBusPlate == bus.vehPlate;
+    final previousRoute = _selectedRoute; // Capture before setState
     setState(() {
-      _selectedBusPlate = bus.vehPlate;
-      _scrollToSelection = true;
+      if (deselecting) {
+        _selectedRoute = null;
+        _selectedBusPlate = null;
+      } else {
+        _selectedRoute = route;
+        _selectedBusPlate = bus.vehPlate;
+        _scrollToSelection = true;
+      }
     });
+    if (deselecting) {
+      _routeAnimController?.stop();
+    } else if (previousRoute != route) {
+      // Only animate if route actually changed
+      _startRouteAnimation();
+    }
   }
 
   void _clearRoute() {
@@ -163,8 +273,26 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     setState(() {
       _selectedRoute = null;
       _selectedStop = null;
+      _highlightedStop = null;
       _selectedBusPlate = null;
     });
+  }
+
+  /// Handles destination selection from search dropdown.
+  void _onDestinationSelected() {
+    final navState = ref.read(navigationStateProvider);
+    final destination = navState.destination;
+    if (destination != null && mounted) {
+      // Center map on the selected destination
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(destination.latitude, destination.longitude),
+          17.0, // Zoom in on destination
+        ),
+      );
+      // Clear any existing stop/route selection
+      _clearAll();
+    }
   }
 
   void _startRouteAnimation() {
@@ -184,58 +312,285 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return Curves.easeOut.transform(v);
   }
 
-  // --------------- Bus icon generation ---------------
+  // --------------- Bus overlay position management ---------------
 
-  void _maybeRegenerateBusIcons(Map<String, List<ActiveBus>> busMap) {
-    final plates = <String>{};
-    for (final buses in busMap.values) {
-      for (final b in buses) {
-        plates.add(b.vehPlate);
-      }
-    }
-    if (plates.length == _perBusIcons.length &&
-        plates.every(_perBusIcons.containsKey)) {
-      return;
-    }
-    _regenerateBusIcons(busMap);
+  /// Mercator tile size at zoom 0
+  static const _tileSize = 256.0;
+
+  /// Convert latitude to world Y coordinate (pixels at zoom 0)
+  static double _latToY(double lat) {
+    final siny = math.sin(lat * math.pi / 180);
+    final clampedSiny = siny.clamp(-0.9999, 0.9999);
+    return _tileSize *
+        (0.5 - math.log((1 + clampedSiny) / (1 - clampedSiny)) / (4 * math.pi));
   }
 
-  Future<void> _regenerateBusIcons(Map<String, List<ActiveBus>> busMap) async {
-    final icons = <String, BitmapDescriptor>{};
-    final selectedIcons = <String, (BitmapDescriptor, Offset)>{};
-    for (final entry in busMap.entries) {
+  /// Convert longitude to world X coordinate (pixels at zoom 0)
+  static double _lngToX(double lng) {
+    return _tileSize * (0.5 + lng / 360);
+  }
+
+  /// Synchronously convert lat/lng to screen coordinates using Mercator projection
+  Offset _latLngToScreen(LatLng point, CameraPosition camera, Size mapSize) {
+    final scale = math.pow(2, camera.zoom).toDouble();
+
+    // Point in world pixels
+    final pointX = _lngToX(point.longitude) * scale;
+    final pointY = _latToY(point.latitude) * scale;
+
+    // Camera center in world pixels
+    final centerX = _lngToX(camera.target.longitude) * scale;
+    final centerY = _latToY(camera.target.latitude) * scale;
+
+    // Offset from center
+    final dx = pointX - centerX;
+    final dy = pointY - centerY;
+
+    // Screen position
+    // Horizontal: no padding asymmetry
+    final screenX = mapSize.width / 2 + dx;
+    // Vertical: account for asymmetric padding — camera target appears at
+    // visual center, not geometric center. Since topPadding < bottomPadding,
+    // paddingOffsetY is negative, shifting markers UP.
+    final paddingOffsetY = (_mapTopPadding - _panelHeight) / 2;
+    final screenY = mapSize.height / 2 + dy + paddingOffsetY;
+
+    return Offset(screenX, screenY);
+  }
+
+  /// Called when camera moves — update stored position and recalculate bus screen positions
+  void _onCameraMove(CameraPosition position) {
+    _currentCameraPosition = position;
+    _updateBusScreenPositions(animate: false);
+  }
+
+  /// Called when camera stops moving — final position update
+  void _onCameraIdle() {
+    _updateBusScreenPositions(animate: false);
+  }
+
+  /// Synchronously update screen coordinates for all visible buses
+  /// [animate] - if false, markers snap instantly (camera movement);
+  ///             if true, markers animate (bus position data changed)
+  void _updateBusScreenPositions({bool animate = true}) {
+    final camera = _currentCameraPosition;
+    if (camera == null) return;
+
+    final renderBox = _mapKey.currentContext?.findRenderObject() as RenderBox?;
+    final mapSize = renderBox?.size;
+    if (mapSize == null || mapSize.isEmpty) return;
+
+    final allBuses = ref.read(allActiveBusesProvider).valueOrNull;
+    if (allBuses == null || allBuses.isEmpty) {
+      if (_busScreenPositions.isNotEmpty) {
+        setState(() => _busScreenPositions = {});
+      }
+      return;
+    }
+
+    final newPositions = <String, Offset>{};
+    final positionChanges = <String>{};
+
+    for (final entry in allBuses.entries) {
       final routeCode = entry.key;
-      final color = RouteBadge.colorForRoute(routeCode);
+      if (_selectedRoute != null && routeCode != _selectedRoute) continue;
+
       for (final bus in entry.value) {
-        final occ = bus.loadInfo?.occupancy ?? 0;
-        final dir = bus.direction;
-        icons[bus.vehPlate] = await MarkerPainter.createBusMarker(
-          occupancy: occ,
-          direction: dir,
-          routeColor: color,
+        final screenPos = _latLngToScreen(
+          LatLng(bus.lat, bus.lng),
+          camera,
+          mapSize,
         );
-        selectedIcons[bus.vehPlate] =
-            await MarkerPainter.createSelectedBusMarker(
-              occupancy: occ,
-              direction: dir,
-              routeColor: color,
-              plate: bus.vehPlate,
-              speed: bus.speed,
-              crowdLevel: bus.loadInfo?.crowdLevel,
-            );
+        newPositions[bus.vehPlate] = screenPos;
+
+        // Track position changes for animation
+        if (animate) {
+          final currentLatLng = LatLng(bus.lat, bus.lng);
+          final previousLatLng = _previousBusPositions[bus.vehPlate];
+          if (previousLatLng == null ||
+              previousLatLng.latitude != currentLatLng.latitude ||
+              previousLatLng.longitude != currentLatLng.longitude) {
+            positionChanges.add(bus.vehPlate);
+            _previousBusPositions[bus.vehPlate] = currentLatLng;
+          }
+        }
       }
     }
-    if (mounted) {
-      setState(() {
-        _perBusIcons = icons;
-        _perBusSelectedIcons = selectedIcons;
-      });
+
+    setState(() {
+      _busScreenPositions = newPositions;
+      _busesWithPositionChange = positionChanges;
+    });
+  }
+
+  /// Determines which bus plate to track (highlight) when a route is selected.
+  /// Returns the plate of the next arriving bus for the first bus leg.
+  String? _getTrackedBusPlate(NavigationState navState) {
+    final route = navState.route;
+    if (route == null) return null;
+
+    // Find the first bus leg
+    RouteLeg? firstBusLeg;
+    for (final leg in route.legs) {
+      if (leg.isBus) {
+        firstBusLeg = leg;
+        break;
+      }
     }
+    if (firstBusLeg == null || firstBusLeg.fromStop == null) return null;
+
+    // Get all stops to match fromStop
+    final stops = ref.read(stopsProvider).valueOrNull;
+    if (stops == null) return null;
+
+    // Find the stop matching fromStop (check name, longName, caption)
+    BusStop? matchedStop;
+    for (final s in stops) {
+      if (s.longName == firstBusLeg.fromStop ||
+          s.name == firstBusLeg.fromStop ||
+          s.caption == firstBusLeg.fromStop) {
+        matchedStop = s;
+        break;
+      }
+    }
+    if (matchedStop == null) return null;
+
+    // Get shuttle info for this stop (use stop.name as the key)
+    final shuttles = ref.read(shuttlesProvider(matchedStop.name)).valueOrNull;
+    if (shuttles == null) return null;
+
+    // Find the shuttle for this route
+    for (final shuttle in shuttles.shuttles) {
+      if (shuttle.name == firstBusLeg.routeCode) {
+        // Return plate if not empty
+        final plate = shuttle.arrivalTimeVehPlate;
+        return plate.isNotEmpty ? plate : null;
+      }
+    }
+
+    return null;
+  }
+
+  /// Build the bus overlay widgets for the Stack.
+  /// If [trackedPlate] is provided, that bus will be highlighted.
+  List<Widget> _buildBusOverlays(
+    Map<String, List<ActiveBus>> busMap, {
+    String? trackedPlate,
+    String? trackedRouteCode,
+  }) {
+    final overlays = <Widget>[];
+
+    for (final entry in busMap.entries) {
+      final routeCode = entry.key;
+      // Filter to selected route if one is active (explore mode)
+      // OR filter to tracked route if tracking a bus (route preview mode)
+      if (_selectedRoute != null && routeCode != _selectedRoute) continue;
+      if (trackedRouteCode != null && routeCode != trackedRouteCode) continue;
+
+      final color = RouteBadge.colorForRoute(routeCode);
+
+      for (final bus in entry.value) {
+        final screenPos = _busScreenPositions[bus.vehPlate];
+        if (screenPos == null) continue; // Position not yet calculated
+
+        // Mark as selected if explicitly selected OR if it's the tracked bus
+        final isSelected =
+            _selectedBusPlate == bus.vehPlate || bus.vehPlate == trackedPlate;
+        final occ = bus.loadInfo?.occupancy ?? 0;
+
+        // Only animate when bus lat/lng actually changed from API data
+        final shouldAnimate = _busesWithPositionChange.contains(bus.vehPlate);
+
+        overlays.add(
+          BusOverlayMarker(
+            key: ValueKey('bus_overlay_${bus.vehPlate}'),
+            screenX: screenPos.dx,
+            screenY: screenPos.dy,
+            occupancy: occ,
+            direction: bus.direction,
+            routeColor: color,
+            isSelected: isSelected,
+            plate: bus.vehPlate,
+            speed: bus.speed,
+            shouldAnimate: shouldAnimate,
+            onTap: () => _selectBus(routeCode, bus),
+          ),
+        );
+      }
+    }
+
+    return overlays;
+  }
+
+  /// Build highlighted stop overlay (appears above bus markers)
+  Widget? _buildHighlightedStopOverlay() {
+    final stopCode = _highlightedStop ?? _selectedStop;
+    if (stopCode == null) return null;
+
+    final camera = _currentCameraPosition;
+    final mapSize = _lastMapSize;
+    if (camera == null || mapSize == null || mapSize.isEmpty) return null;
+
+    final allStops = ref.read(stopsProvider).valueOrNull;
+    if (allStops == null) return null;
+
+    BusStop? targetStop;
+    for (final s in allStops) {
+      if (s.name == stopCode) {
+        targetStop = s;
+        break;
+      }
+    }
+    if (targetStop == null) return null;
+
+    final screenPos = _latLngToScreen(
+      LatLng(targetStop.latitude, targetStop.longitude),
+      camera,
+      mapSize,
+    );
+
+    // Only show highlight ring if a bus marker is close enough to obscure the stop
+    const obscureThreshold =
+        30.0; // pixels — bus marker radius + stop icon radius
+    bool isBusNearby = false;
+    for (final busPos in _busScreenPositions.values) {
+      final dx = (busPos.dx - screenPos.dx).abs();
+      final dy = (busPos.dy - screenPos.dy).abs();
+      if (dx < obscureThreshold && dy < obscureThreshold) {
+        isBusNearby = true;
+        break;
+      }
+    }
+    if (!isBusNearby) return null;
+
+    // Highlight ring around the stop (appears above bus markers)
+    return Positioned(
+      left: screenPos.dx - 18,
+      top: screenPos.dy - 18,
+      child: IgnorePointer(
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.primary, width: 3),
+            color: AppColors.primary.withValues(alpha: 0.15),
+          ),
+        ),
+      ),
+    );
   }
 
   // --------------- Map overlays ---------------
 
-  Set<Polyline> _buildPolylines() {
+  Set<Polyline> _buildPolylines(NavigationState navState) {
+    // Route preview mode: show route legs
+    if (navState.status == NavigationStatus.routePreview &&
+        navState.route != null) {
+      return _buildRoutePreviewPolylines(navState.route!);
+    }
+
+    // Explore mode: show selected route
     if (_selectedRoute == null) return {};
     final checkpoints = ref.watch(checkpointsProvider(_selectedRoute!));
     return checkpoints.when(
@@ -307,8 +662,144 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
         };
       },
       loading: () => <Polyline>{},
-      error: (_, __) => <Polyline>{},
+      error: (error, stackTrace) => <Polyline>{},
     );
+  }
+
+  Set<Polyline> _buildRoutePreviewPolylines(RoutePlanResult route) {
+    final polylines = <Polyline>{};
+    final userPosition = _currentUserLatLng;
+    final destinationPosition = _selectedNavigationDestinationPosition(
+      ref.read(navigationStateProvider),
+    );
+
+    for (int i = 0; i < route.legs.length; i++) {
+      final leg = route.legs[i];
+
+      if (leg.isWalk) {
+        final points = _resolveWalkLegPoints(
+          leg,
+          userPosition: userPosition,
+          destinationPosition: destinationPosition,
+          isFirstLeg: i == 0,
+        );
+        if (points == null) {
+          continue;
+        }
+
+        polylines.add(
+          Polyline(
+            polylineId: PolylineId('preview_walk_$i'),
+            points: points,
+            color: AppColors.textMuted,
+            width: 4,
+            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+          ),
+        );
+        continue;
+      }
+
+      if (leg.isBus && leg.routeCode != null) {
+        if (leg.fromLat == null ||
+            leg.fromLng == null ||
+            leg.toLat == null ||
+            leg.toLng == null) {
+          continue;
+        }
+
+        final points = [
+          LatLng(leg.fromLat!, leg.fromLng!),
+          LatLng(leg.toLat!, leg.toLng!),
+        ];
+        final busPoints = _buildBusLegPoints(leg, fallbackPoints: points);
+        polylines.add(
+          Polyline(
+            polylineId: PolylineId('preview_bus_$i'),
+            points: busPoints,
+            color: RouteBadge.colorForRoute(leg.routeCode!),
+            width: 5,
+          ),
+        );
+      }
+    }
+
+    return polylines;
+  }
+
+  LatLng? get _currentUserLatLng {
+    final lastPosition = _lastPosition;
+    if (lastPosition == null) {
+      return null;
+    }
+
+    return LatLng(lastPosition.latitude, lastPosition.longitude);
+  }
+
+  LatLng? _selectedNavigationDestinationPosition(NavigationState navState) {
+    final destination = navState.destination;
+    if (destination == null) {
+      return null;
+    }
+
+    return LatLng(destination.latitude, destination.longitude);
+  }
+
+  List<LatLng>? _resolveWalkLegPoints(
+    RouteLeg leg, {
+    LatLng? userPosition,
+    LatLng? destinationPosition,
+    bool isFirstLeg = false,
+  }) {
+    // For the first walk leg, always use live user position as the origin
+    // to ensure the polyline tracks the user's actual location.
+    final startLat = isFirstLeg
+        ? (userPosition?.latitude ?? leg.fromLat)
+        : (leg.fromLat ?? userPosition?.latitude);
+    final startLng = isFirstLeg
+        ? (userPosition?.longitude ?? leg.fromLng)
+        : (leg.fromLng ?? userPosition?.longitude);
+    final endLat = leg.toLat ?? destinationPosition?.latitude;
+    final endLng = leg.toLng ?? destinationPosition?.longitude;
+
+    if (startLat == null ||
+        startLng == null ||
+        endLat == null ||
+        endLng == null) {
+      return null;
+    }
+
+    return [LatLng(startLat, startLng), LatLng(endLat, endLng)];
+  }
+
+  List<LatLng> _buildBusLegPoints(
+    RouteLeg leg, {
+    required List<LatLng> fallbackPoints,
+  }) {
+    final routeCode = leg.routeCode;
+    final fromLat = leg.fromLat;
+    final fromLng = leg.fromLng;
+    final toLat = leg.toLat;
+    final toLng = leg.toLng;
+
+    if (routeCode == null ||
+        fromLat == null ||
+        fromLng == null ||
+        toLat == null ||
+        toLng == null) {
+      return fallbackPoints;
+    }
+
+    final checkpoints = ref.watch(checkpointsProvider(routeCode)).valueOrNull;
+    if (checkpoints == null || checkpoints.isEmpty) {
+      return fallbackPoints;
+    }
+
+    return clipCheckpointSegment(
+          checkpoints: checkpoints,
+          boardingPoint: LatLng(fromLat, fromLng),
+          alightingPoint: LatLng(toLat, toLng),
+        ) ??
+        fallbackPoints;
   }
 
   static double _haversineDist(
@@ -329,7 +820,11 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
-  Set<Marker> _buildMarkers() {
+  Set<Marker> _buildMarkers(NavigationState navState) {
+    if (navState.destination != null || navState.route != null) {
+      return _buildRouteContextMarkers(navState);
+    }
+
     final markers = <Marker>{};
     final stopIcon = _stopIcon;
     final selectedStopIcon = _selectedStopIcon;
@@ -352,7 +847,8 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
           if (routeStopCodes != null && !routeStopCodes!.contains(stop.name)) {
             continue;
           }
-          final isSelected = _selectedStop == stop.name;
+          final isSelected =
+              _selectedStop == stop.name || _highlightedStop == stop.name;
           markers.add(
             Marker(
               markerId: MarkerId('stop_${stop.name}'),
@@ -361,7 +857,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                   ? selectedStopIcon
                   : stopIcon,
               anchor: const Offset(0.5, 0.5),
-              zIndex: 1,
+              zIndexInt: 1,
               consumeTapEvents: true,
               onTap: () => _selectStop(stop.name, fromMap: true),
             ),
@@ -370,52 +866,136 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       });
     }
 
-    // Active bus markers — all buses when no route selected, route buses when selected
+    // Bus markers are now rendered as overlay widgets (see _buildBusOverlays)
+    // Trigger position recalculation when bus data updates
     final allBuses = ref.watch(allActiveBusesProvider);
     allBuses.whenData((busMap) {
-      _maybeRegenerateBusIcons(busMap);
-      for (final entry in busMap.entries) {
-        final routeCode = entry.key;
-        // Filter to selected route if one is active
-        if (_selectedRoute != null && routeCode != _selectedRoute) continue;
-        for (final bus in entry.value) {
-          final isSelected = _selectedBusPlate == bus.vehPlate;
-          if (isSelected) {
-            final selected = _perBusSelectedIcons[bus.vehPlate];
-            if (selected != null) {
-              markers.add(
-                Marker(
-                  markerId: MarkerId('bus_${bus.vehPlate}'),
-                  position: LatLng(bus.lat, bus.lng),
-                  icon: selected.$1,
-                  anchor: selected.$2,
-                  zIndex: 3,
-                  consumeTapEvents: true,
-                  onTap: () => _selectBus(routeCode, bus),
-                ),
-              );
-            }
-          } else {
-            final icon = _perBusIcons[bus.vehPlate];
-            if (icon != null) {
-              markers.add(
-                Marker(
-                  markerId: MarkerId('bus_${bus.vehPlate}'),
-                  position: LatLng(bus.lat, bus.lng),
-                  icon: icon,
-                  anchor: const Offset(0.5, 0.5),
-                  zIndex: 2,
-                  consumeTapEvents: true,
-                  onTap: () => _selectBus(routeCode, bus),
-                ),
-              );
-            }
-          }
-        }
-      }
+      // Schedule position recalculation after this frame (with animation for new data)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _updateBusScreenPositions(animate: true);
+      });
     });
 
     return markers;
+  }
+
+  Set<Marker> _buildRouteContextMarkers(NavigationState navState) {
+    final markers = <Marker>{};
+    final route = navState.route;
+    final stopIcon = _stopIcon;
+    final selectedStopIcon = _selectedStopIcon;
+    final destinationIcon = _destinationIcon;
+
+    final activeStopName = _activeRouteStopName(navState);
+    final seenStopKeys = <String>{};
+
+    if (route != null && stopIcon != null) {
+      for (final leg in route.legs) {
+        if (!leg.isBus) continue;
+
+        _addRouteStopMarker(
+          markers: markers,
+          seenStopKeys: seenStopKeys,
+          stopName: leg.fromStop,
+          lat: leg.fromLat,
+          lng: leg.fromLng,
+          stopIcon: stopIcon,
+          selectedStopIcon: selectedStopIcon,
+          activeStopName: activeStopName,
+        );
+        _addRouteStopMarker(
+          markers: markers,
+          seenStopKeys: seenStopKeys,
+          stopName: leg.toStop,
+          lat: leg.toLat,
+          lng: leg.toLng,
+          stopIcon: stopIcon,
+          selectedStopIcon: selectedStopIcon,
+          activeStopName: activeStopName,
+        );
+      }
+    }
+
+    final destinationPosition = _routeDestinationPosition(navState);
+    if (destinationPosition != null && destinationIcon != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('route_destination'),
+          position: destinationPosition,
+          icon: destinationIcon,
+          anchor: const Offset(0.5, 0.5),
+          zIndexInt: 12,
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  void _addRouteStopMarker({
+    required Set<Marker> markers,
+    required Set<String> seenStopKeys,
+    required String? stopName,
+    required double? lat,
+    required double? lng,
+    required BitmapDescriptor stopIcon,
+    required BitmapDescriptor? selectedStopIcon,
+    required String? activeStopName,
+  }) {
+    if (lat == null || lng == null) return;
+
+    final normalizedStopName = _normalizeRouteStopName(stopName);
+    final markerKey =
+        normalizedStopName ??
+        '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+    if (!seenStopKeys.add(markerKey)) return;
+
+    final isActive =
+        normalizedStopName != null && normalizedStopName == activeStopName;
+
+    markers.add(
+      Marker(
+        markerId: MarkerId('route_stop_$markerKey'),
+        position: LatLng(lat, lng),
+        icon: isActive && selectedStopIcon != null
+            ? selectedStopIcon
+            : stopIcon,
+        anchor: const Offset(0.5, 0.5),
+        zIndexInt: isActive ? 8 : 4,
+      ),
+    );
+  }
+
+  String? _activeRouteStopName(NavigationState navState) {
+    // Live navigation disabled for MVP — no active stop highlighting
+    return null;
+  }
+
+  String? _normalizeRouteStopName(String? stopName) {
+    final trimmed = stopName?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  LatLng? _routeDestinationPosition(NavigationState navState) {
+    final destination = navState.destination;
+    if (destination != null) {
+      return LatLng(destination.latitude, destination.longitude);
+    }
+
+    final route = navState.route;
+    if (route == null || route.legs.isEmpty) {
+      return null;
+    }
+
+    final lastLeg = route.legs.last;
+    if (lastLeg.toLat == null || lastLeg.toLng == null) {
+      return null;
+    }
+
+    return LatLng(lastLeg.toLat!, lastLeg.toLng!);
   }
 
   @override
@@ -436,10 +1016,56 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return false;
   }
 
+  /// Fit map camera to show the entire navigation route.
+  void _fitMapToRoute(RoutePlanResult route) {
+    final points = <LatLng>[];
+
+    // Add user position as origin
+    if (_lastPosition != null) {
+      points.add(LatLng(_lastPosition!.latitude, _lastPosition!.longitude));
+    }
+
+    // Add all leg endpoints
+    for (final leg in route.legs) {
+      if (leg.fromLat != null && leg.fromLng != null) {
+        points.add(LatLng(leg.fromLat!, leg.fromLng!));
+      }
+      if (leg.toLat != null && leg.toLng != null) {
+        points.add(LatLng(leg.toLat!, leg.toLng!));
+      }
+    }
+
+    if (points.length < 2) return;
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final p in points) {
+      minLat = math.min(minLat, p.latitude);
+      maxLat = math.max(maxLat, p.latitude);
+      minLng = math.min(minLng, p.longitude);
+      maxLng = math.max(maxLng, p.longitude);
+    }
+
+    const padding = 0.002;
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat - padding, minLng - padding),
+          northeast: LatLng(maxLat + padding, maxLng + padding),
+        ),
+        60,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
+    _highlightFlashTimer?.cancel();
     _tabController.dispose();
     _routeAnimController?.dispose();
     _mapController?.dispose();
@@ -459,96 +1085,136 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     final topInset = MediaQuery.of(context).padding.top;
     _panelHeight = screenHeight * 0.4;
     // Account for status bar + search bar overlay (~60px below safe area)
-    final mapTopPadding = topInset + 60;
+    _mapTopPadding = topInset + 60;
+
+    // Get current bus data for overlay
+    final allBuses = ref.watch(allActiveBusesProvider);
+    final busMap = allBuses.valueOrNull ?? <String, List<ActiveBus>>{};
+
+    // Watch navigation state to react to destination/route selection
+    final navState = ref.watch(navigationStateProvider);
+    final hasDestination = navState.destination != null;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // Google Map
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _nusCenter,
-              zoom: AppConstants.defaultZoom,
-            ),
-            onMapCreated: (controller) => _mapController = controller,
-            onTap: (_) => _clearAll(),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            rotateGesturesEnabled: false,
-            tiltGesturesEnabled: false,
-            padding: EdgeInsets.only(top: mapTopPadding, bottom: _panelHeight),
-            polylines: _buildPolylines(),
-            markers: _buildMarkers(),
+          // Google Map (base layer) — wrapped with LayoutBuilder for resize detection
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final currentSize = constraints.biggest;
+
+              // Detect resize and schedule position update (skip initial build)
+              if (_lastMapSize != null && _lastMapSize != currentSize) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _updateBusScreenPositions(animate: false);
+                });
+              }
+              _lastMapSize = currentSize;
+
+              return KeyedSubtree(
+                key: _mapKey,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _nusCenter,
+                    zoom: AppConstants.defaultZoom,
+                  ),
+                  style: _mapStyle,
+                  onMapCreated: (controller) {
+                    _mapController = controller;
+                    // Set initial camera position for projection
+                    _currentCameraPosition = CameraPosition(
+                      target: _nusCenter,
+                      zoom: AppConstants.defaultZoom,
+                    );
+                    // Initial position calculation after map is ready
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _updateBusScreenPositions(animate: false);
+                    });
+
+                    final navState = ref.read(navigationStateProvider);
+                    if (navState.status == NavigationStatus.routePreview &&
+                        navState.route != null) {
+                      _fitMapToRoute(navState.route!);
+                    }
+                  },
+                  onCameraMove: _onCameraMove,
+                  onCameraIdle: _onCameraIdle,
+                  onTap: (_) => _clearAll(),
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  rotateGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+                  padding: EdgeInsets.only(
+                    top: _mapTopPadding,
+                    bottom: _panelHeight,
+                  ),
+                  polylines: _buildPolylines(navState),
+                  markers: _buildMarkers(navState),
+                ),
+              );
+            },
           ),
 
-          // Route info banner / search bar (animated switch)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 16,
-            right: 16,
-            child: AnimatedSwitcherDefaults(
-              duration: const Duration(milliseconds: 250),
-              child: _selectedRoute != null
-                  ? Container(
-                      key: const ValueKey('route_banner'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          RouteBadge(routeCode: _selectedRoute!, fontSize: 13),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Route $_selectedRoute',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          _buildBusCount(),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: _clearRoute,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.background,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 18,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : GestureDetector(
-                      key: const ValueKey('search_bar'),
-                      onTap: () => context.go('/search'),
-                      child: Container(
+          // GPU-accelerated bus marker overlay layer
+          // In explore mode: show all buses (filtered by selected route if any)
+          // In route preview mode: show only the tracked bus for the first bus leg
+          Builder(
+            builder: (context) {
+              if (navState.route != null) {
+                // Route preview mode: find and highlight the tracked bus
+                final trackedPlate = _getTrackedBusPlate(navState);
+                if (trackedPlate == null) return const SizedBox.shrink();
+
+                // Find the route code for the first bus leg
+                String? trackedRouteCode;
+                for (final leg in navState.route!.legs) {
+                  if (leg.isBus) {
+                    trackedRouteCode = leg.routeCode;
+                    break;
+                  }
+                }
+
+                return IgnorePointer(
+                  ignoring: true, // Non-interactive in route preview
+                  child: Stack(
+                    children: _buildBusOverlays(
+                      busMap,
+                      trackedPlate: trackedPlate,
+                      trackedRouteCode: trackedRouteCode,
+                    ),
+                  ),
+                );
+              } else {
+                // Explore mode: show all buses normally
+                return IgnorePointer(
+                  ignoring: false,
+                  child: Stack(children: _buildBusOverlays(busMap)),
+                );
+              }
+            },
+          ),
+
+          // Highlighted stop overlay (appears above bus markers) — hide when route is selected
+          if (navState.route == null && _buildHighlightedStopOverlay() != null)
+            _buildHighlightedStopOverlay()!,
+
+          // Route info banner / destination preview / search bar — hide when route detail is shown
+          if (navState.route == null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 12,
+              left: 16,
+              right: 16,
+              child: AnimatedSwitcherDefaults(
+                duration: const Duration(milliseconds: 250),
+                child: _selectedRoute != null
+                    ? Container(
+                        key: const ValueKey('route_banner'),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
-                          vertical: 14,
+                          vertical: 12,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.surface,
@@ -561,110 +1227,307 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                             ),
                           ],
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
-                            Icon(
-                              Icons.search,
-                              color: AppColors.textMuted,
-                              size: 22,
+                            RouteBadge(
+                              routeCode: _selectedRoute!,
+                              fontSize: 13,
                             ),
-                            SizedBox(width: 12),
-                            Text(
-                              'Where are you heading?',
-                              style: TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Route $_selectedRoute',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            _buildBusCount(),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _clearRoute,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.background,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 18,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             ),
                           ],
                         ),
+                      )
+                    : hasDestination
+                    ? _buildDestinationPreview(navState.destination!)
+                    : SearchDropdown(
+                        key: const ValueKey('search_bar'),
+                        userPosition: _lastPosition,
+                        onDestinationSelected: _onDestinationSelected,
                       ),
-                    ),
-            ),
-          ),
-
-          // My location button
-          Positioned(
-            right: 16,
-            bottom: _panelHeight + 16,
-            child: FloatingActionButton.small(
-              heroTag: 'myLocation',
-              backgroundColor: AppColors.surface,
-              onPressed: () async {
-                try {
-                  final pos = await Geolocator.getCurrentPosition();
-                  if (!mounted) return;
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
-                  );
-                } catch (_) {}
-              },
-              child: const Icon(
-                Icons.my_location,
-                color: AppColors.primary,
-                size: 22,
               ),
             ),
-          ),
 
-          // Fixed bottom panel with tabs
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: _panelHeight,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                border: Border(top: BorderSide(color: AppColors.borderLight)),
+          // My location button — hide when route detail is shown
+          if (navState.route == null)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              right: 16,
+              bottom: _panelHeight + 16,
+              child: FloatingActionButton.small(
+                heroTag: 'myLocation',
+                backgroundColor: AppColors.surface,
+                onPressed: () async {
+                  try {
+                    final pos = await Geolocator.getCurrentPosition();
+                    if (!mounted) return;
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLng(
+                        LatLng(pos.latitude, pos.longitude),
+                      ),
+                    );
+                  } catch (_) {}
+                },
+                child: const Icon(
+                  Icons.my_location,
+                  color: AppColors.primary,
+                  size: 22,
+                ),
               ),
-              child: Column(
-                children: [
-                  // Tab bar
-                  _buildTabBar(),
-                  // Tab content
-                  Expanded(
-                    child: allSortedStops.when(
-                      skipLoadingOnReload: true,
-                      data: (stops) => TabBarView(
-                        controller: _tabController,
-                        children: [
-                          StopsTab(
-                            stops: stops,
-                            selectedStop: _selectedStop,
-                            selectedRoute: _selectedRoute,
-                            onStopSelected: (name) => _selectStop(name),
-                            onRouteSelected: (route) => _selectRoute(route),
-                          ),
-                          LinesTab(
-                            userLat: lat,
-                            userLng: lng,
-                            selectedRoute: _selectedRoute,
-                            shouldScrollToSelection: _scrollToSelection,
-                            onRouteSelected: (route) => _selectRoute(route),
-                          ),
-                        ],
-                      ),
-                      loading: () => const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: ShimmerList(itemCount: 3, itemHeight: 80),
-                      ),
-                      error: (error, _) => Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: ErrorCard(
-                          message: error.toString(),
-                          onRetry: () => ref.invalidate(stopsProvider),
-                        ),
-                      ),
+            ),
+
+          // Bottom panel (fixed height) — hide when route is selected
+          // Wrap with MediaQuery.removeViewInsets to ignore keyboard
+          if (navState.route == null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: _panelHeight,
+              child: MediaQuery.removeViewInsets(
+                context: context,
+                removeBottom: true,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border(
+                      top: BorderSide(color: AppColors.borderLight),
                     ),
                   ),
-                ],
+                  child: _buildBottomPanelContent(
+                    navState,
+                    allSortedStops,
+                    lat,
+                    lng,
+                  ),
+                ),
+              ),
+            ),
+
+          // Route detail view — overlay chrome above the shared map surface
+          if (navState.route != null &&
+              navState.status == NavigationStatus.routePreview)
+            RouteDetailView(
+              route: navState.route!,
+              userPosition: _lastPosition,
+              onRouteFocusRequested: () {
+                if (navState.route != null) {
+                  _fitMapToRoute(navState.route!);
+                }
+              },
+              onBack: () {
+                // Clear selected route and return to suggestions
+                ref.read(navigationStateProvider.notifier).deselectRoute();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds the destination preview banner shown when a destination is selected.
+  Widget _buildDestinationPreview(Building destination) {
+    return Container(
+      key: const ValueKey('destination_preview'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.infoBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.location_on,
+              color: AppColors.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  destination.name,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Destination',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              ref.read(navigationStateProvider.notifier).cancelNavigation();
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.close,
+                size: 18,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Builds the bottom panel content based on navigation state.
+  /// Shows RouteSuggestionsPanel when in routePreview with a destination,
+  /// otherwise shows the normal stops/lines tabs.
+  Widget _buildBottomPanelContent(
+    NavigationState navState,
+    AsyncValue<List<NearbyStopResult>> allSortedStops,
+    double lat,
+    double lng,
+  ) {
+    // Show route suggestions panel when destination is selected
+    if (navState.status == NavigationStatus.routePreview &&
+        navState.destination != null) {
+      return RouteSuggestionsPanel(
+        destination: navState.destination!,
+        userPosition: _lastPosition,
+      );
+    }
+
+    // Default: show stops/lines tabs
+    return Column(
+      children: [
+        _buildTabBar(),
+        Expanded(
+          child: allSortedStops.when(
+            skipLoadingOnReload: true,
+            data: (stops) => TabBarView(
+              controller: _tabController,
+              children: [
+                StopsTab(
+                  stops: stops,
+                  selectedStop: _selectedStop,
+                  selectedRoute: _selectedRoute,
+                  onStopSelected: (name) => _selectStop(name),
+                  onStopLocate: (name) => _locateStop(name),
+                  onRouteSelected: (route) => _selectRoute(route),
+                  onCenterMap: (stopLat, stopLng, stopCode) {
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLng(LatLng(stopLat, stopLng)),
+                    );
+                    _flashHighlightStop(stopCode);
+                  },
+                  onBusSelected: (route, plate) {
+                    final allBuses = ref
+                        .read(allActiveBusesProvider)
+                        .valueOrNull;
+                    if (allBuses == null) return;
+                    final buses = allBuses[route] ?? [];
+                    final bus = buses.cast<ActiveBus?>().firstWhere(
+                      (b) => b!.vehPlate == plate,
+                      orElse: () => null,
+                    );
+                    if (bus != null) _selectBus(route, bus);
+                  },
+                ),
+                LinesTab(
+                  userLat: lat,
+                  userLng: lng,
+                  selectedRoute: _selectedRoute,
+                  selectedBusPlate: _selectedBusPlate,
+                  shouldScrollToSelection: _scrollToSelection,
+                  onRouteSelected: (route) => _selectRoute(route),
+                  onCenterMap: (stopLat, stopLng, stopCode) {
+                    _mapController?.animateCamera(
+                      CameraUpdate.newLatLng(LatLng(stopLat, stopLng)),
+                    );
+                    _flashHighlightStop(stopCode);
+                  },
+                  onBusSelected: (route, plate) {
+                    final allBuses = ref
+                        .read(allActiveBusesProvider)
+                        .valueOrNull;
+                    if (allBuses == null) return;
+                    final buses = allBuses[route] ?? [];
+                    final bus = buses.cast<ActiveBus?>().firstWhere(
+                      (b) => b!.vehPlate == plate,
+                      orElse: () => null,
+                    );
+                    if (bus != null) _selectBus(route, bus);
+                  },
+                ),
+              ],
+            ),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(20),
+              child: ShimmerList(itemCount: 3, itemHeight: 80),
+            ),
+            error: (error, _) => Padding(
+              padding: const EdgeInsets.all(20),
+              child: ErrorCard(
+                message: error.toString(),
+                onRetry: () => ref.invalidate(stopsProvider),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -745,7 +1608,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
         height: 14,
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
 }

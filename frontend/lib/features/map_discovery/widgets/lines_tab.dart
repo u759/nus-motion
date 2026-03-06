@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
+import 'package:frontend/core/widgets/pickup_points_list.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
+import 'package:frontend/core/widgets/selectable_card.dart';
 import 'package:frontend/data/models/service_description.dart';
 import 'package:frontend/state/providers.dart';
 
@@ -12,16 +14,22 @@ class LinesTab extends ConsumerStatefulWidget {
   final double userLat;
   final double userLng;
   final String? selectedRoute;
+  final String? selectedBusPlate;
   final bool shouldScrollToSelection;
   final ValueChanged<String> onRouteSelected;
+  final void Function(String route, String plate)? onBusSelected;
+  final void Function(double lat, double lng, String stopCode)? onCenterMap;
 
   const LinesTab({
     super.key,
     required this.userLat,
     required this.userLng,
     this.selectedRoute,
+    this.selectedBusPlate,
     this.shouldScrollToSelection = false,
     required this.onRouteSelected,
+    this.onBusSelected,
+    this.onCenterMap,
   });
 
   @override
@@ -31,6 +39,7 @@ class LinesTab extends ConsumerStatefulWidget {
 class _LinesTabState extends ConsumerState<LinesTab> {
   final _scrollController = ScrollController();
   final _itemKeys = <String, GlobalKey>{};
+  String? _openedRoute;
 
   GlobalKey _keyFor(String route) =>
       _itemKeys.putIfAbsent(route, () => GlobalKey());
@@ -79,9 +88,9 @@ class _LinesTabState extends ConsumerState<LinesTab> {
           );
         }
 
-        final selectedDesc = widget.selectedRoute != null
+        final openedDesc = _openedRoute != null
             ? routes.cast<ServiceDescription?>().firstWhere(
-                (r) => r!.route == widget.selectedRoute,
+                (r) => r!.route == _openedRoute,
                 orElse: () => null,
               )
             : null;
@@ -93,8 +102,7 @@ class _LinesTabState extends ConsumerState<LinesTab> {
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) {
-            final isDetail =
-                child.key == ValueKey('line_detail_${widget.selectedRoute}');
+            final isDetail = child.key == ValueKey('line_detail_$_openedRoute');
             final offset = isDetail
                 ? Tween(begin: const Offset(0, 0.15), end: Offset.zero)
                 : Tween(begin: const Offset(0, -0.05), end: Offset.zero);
@@ -103,11 +111,14 @@ class _LinesTabState extends ConsumerState<LinesTab> {
               child: FadeTransition(opacity: animation, child: child),
             );
           },
-          child: selectedDesc != null
+          child: openedDesc != null
               ? _LineDetailView(
-                  key: ValueKey('line_detail_${widget.selectedRoute}'),
-                  desc: selectedDesc,
-                  onBack: () => widget.onRouteSelected(selectedDesc.route),
+                  key: ValueKey('line_detail_$_openedRoute'),
+                  desc: openedDesc,
+                  selectedBusPlate: widget.selectedBusPlate,
+                  onBack: () => setState(() => _openedRoute = null),
+                  onBusSelected: widget.onBusSelected,
+                  onCenterMap: widget.onCenterMap,
                 )
               : _LineListView(
                   key: const ValueKey('line_list'),
@@ -115,7 +126,9 @@ class _LinesTabState extends ConsumerState<LinesTab> {
                   selectedRoute: widget.selectedRoute,
                   scrollController: _scrollController,
                   keyFor: _keyFor,
-                  onRouteSelected: widget.onRouteSelected,
+                  onRouteSelected: (route) {
+                    setState(() => _openedRoute = route);
+                  },
                 ),
         );
       },
@@ -215,14 +228,24 @@ class _LineListView extends StatelessWidget {
 
 class _LineDetailView extends ConsumerWidget {
   final ServiceDescription desc;
+  final String? selectedBusPlate;
   final VoidCallback onBack;
+  final void Function(String route, String plate)? onBusSelected;
+  final void Function(double lat, double lng, String stopCode)? onCenterMap;
 
-  const _LineDetailView({super.key, required this.desc, required this.onBack});
+  const _LineDetailView({
+    super.key,
+    required this.desc,
+    this.selectedBusPlate,
+    required this.onBack,
+    this.onBusSelected,
+    this.onCenterMap,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final routeColor = RouteBadge.colorForRoute(desc.route);
-    final activeBuses = ref.watch(activeBusesProvider(desc.route));
+    final allBuses = ref.watch(allActiveBusesProvider);
     final pickupPoints = ref.watch(pickupPointsProvider(desc.route));
 
     return Column(
@@ -276,9 +299,10 @@ class _LineDetailView extends ConsumerWidget {
                 color: routeColor,
               ),
               const SizedBox(height: 8),
-              activeBuses.when(
+              allBuses.when(
                 skipLoadingOnReload: true,
-                data: (buses) {
+                data: (busMap) {
+                  final buses = busMap[desc.route] ?? [];
                   if (buses.isEmpty) {
                     return _InfoCard(
                       child: const Text(
@@ -304,6 +328,11 @@ class _LineDetailView extends ConsumerWidget {
                             ridership: buses[i].loadInfo?.ridership,
                             capacity: buses[i].loadInfo?.capacity,
                             routeColor: routeColor,
+                            isSelected: buses[i].vehPlate == selectedBusPlate,
+                            onTap: () => onBusSelected?.call(
+                              desc.route,
+                              buses[i].vehPlate,
+                            ),
                           ),
                         ),
                     ],
@@ -346,34 +375,18 @@ class _LineDetailView extends ConsumerWidget {
                       ),
                     );
                   }
-                  final sorted = [...points]
-                    ..sort((a, b) => a.seq.compareTo(b.seq));
                   return _InfoCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (int i = 0; i < sorted.length; i++) ...[
-                          _PickupPointRow(
-                            index: i + 1,
-                            name: sorted[i].longName.isNotEmpty
-                                ? sorted[i].longName
-                                : sorted[i].pickupname,
-                            shortName: sorted[i].shortName,
-                            routeColor: routeColor,
-                            isFirst: i == 0,
-                            isLast: i == sorted.length - 1,
-                          ),
-                          if (i < sorted.length - 1)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 15),
-                              child: Container(
-                                width: 2,
-                                height: 12,
-                                color: routeColor.withValues(alpha: 0.2),
-                              ),
-                            ),
-                        ],
-                      ],
+                    child: PickupPointsList(
+                      points: points,
+                      routeCode: desc.route,
+                      activeBuses: allBuses.valueOrNull?[desc.route],
+                      onStopTapped: onCenterMap != null
+                          ? (stop) => onCenterMap!(
+                              stop.lat,
+                              stop.lng,
+                              stop.busstopcode,
+                            )
+                          : null,
                     ),
                   );
                 },
@@ -464,6 +477,8 @@ class _ActiveBusRow extends StatelessWidget {
   final int? ridership;
   final int? capacity;
   final Color routeColor;
+  final bool isSelected;
+  final VoidCallback? onTap;
 
   const _ActiveBusRow({
     required this.plate,
@@ -472,17 +487,17 @@ class _ActiveBusRow extends StatelessWidget {
     this.ridership,
     this.capacity,
     required this.routeColor,
+    this.isSelected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SelectableCard(
+      isSelected: isSelected,
+      accentColor: routeColor,
+      onTap: onTap,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
-      ),
       child: Row(
         children: [
           Container(
@@ -517,7 +532,9 @@ class _ActiveBusRow extends StatelessWidget {
               ],
             ),
           ),
-          if (crowdLevel != null) ...[
+          if (ridership != null && capacity != null && capacity! > 0)
+            _CapacityBar(ridership: ridership!, capacity: capacity!)
+          else if (crowdLevel != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -533,14 +550,6 @@ class _ActiveBusRow extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-          if (ridership != null && capacity != null && capacity! > 0) ...[
-            const SizedBox(width: 8),
-            Text(
-              '$ridership/$capacity',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-            ),
-          ],
         ],
       ),
     );
@@ -560,69 +569,70 @@ class _ActiveBusRow extends StatelessWidget {
   }
 }
 
-// ─── Pickup Point Row ────────────────────────────────────────
+// ─── Capacity Progress Bar ───────────────────────────────────
 
-class _PickupPointRow extends StatelessWidget {
-  final int index;
-  final String name;
-  final String shortName;
-  final Color routeColor;
-  final bool isFirst;
-  final bool isLast;
+class _CapacityBar extends StatelessWidget {
+  final int ridership;
+  final int capacity;
 
-  const _PickupPointRow({
-    required this.index,
-    required this.name,
-    required this.shortName,
-    required this.routeColor,
-    this.isFirst = false,
-    this.isLast = false,
-  });
+  const _CapacityBar({required this.ridership, required this.capacity});
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final occupancy = capacity > 0 ? ridership / capacity : 0.0;
+    final color = _getLoadColor(occupancy);
+    final percentage = (occupancy * 100).round();
+
+    return SizedBox(
+      width: 100, // Wider for better visibility
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, // Left aligned
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CustomPaint(
-            painter: _TimelinePainter(
-              routeColor: routeColor,
-              isFirst: isFirst,
-              isLast: isLast,
+          Container(
+            height: 6,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(3),
+              color: const Color(0xFFE0E0E0), // Grey background
             ),
-            child: const SizedBox(width: 30),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
+            child: Align(
+              alignment: Alignment.centerLeft, // Fill from left
+              child: FractionallySizedBox(
+                widthFactor: occupancy.clamp(0.0, 1.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(3),
+                    color: color,
                   ),
-                  if (shortName.isNotEmpty && shortName != name)
-                    Text(
-                      shortName,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                ],
+                ),
               ),
             ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '$percentage% full', // Percentage instead of fraction
+            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
           ),
         ],
       ),
     );
+  }
+
+  static Color _getLoadColor(double occupancy) {
+    final occ = occupancy.clamp(0.0, 1.0);
+    if (occ <= 0.5) {
+      return Color.lerp(
+        const Color(0xFF4CAF50),
+        const Color(0xFFFFC107),
+        occ * 2,
+      )!;
+    } else {
+      return Color.lerp(
+        const Color(0xFFFFC107),
+        const Color(0xFFF44336),
+        (occ - 0.5) * 2,
+      )!;
+    }
   }
 }
 
@@ -642,100 +652,80 @@ class _LineItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeBuses = ref.watch(activeBusesProvider(desc.route));
+    final allBuses = ref.watch(allActiveBusesProvider);
     final routeColor = RouteBadge.colorForRoute(desc.route);
 
-    final selectedBg = Color.alphaBlend(
-      routeColor.withValues(alpha: 0.06),
-      AppColors.surface,
-    );
-    final selectedBorder = Color.alphaBlend(
-      routeColor.withValues(alpha: 0.3),
-      AppColors.surface,
-    );
-
-    return GestureDetector(
+    return SelectableCard(
+      isSelected: isSelected,
+      accentColor: routeColor,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? selectedBg : AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? selectedBorder : AppColors.borderLight,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(14),
+      borderRadius: 14,
+      child: Row(
+        children: [
+          RouteBadge(routeCode: desc.route, fontSize: 13),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _RoutePathText(
+                  text: desc.routeDescription.isNotEmpty
+                      ? desc.routeDescription
+                      : desc.routeLongName,
+                  routeColor: routeColor,
+                  fontSize: 12,
+                ),
+              ],
+            ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              RouteBadge(routeCode: desc.route, fontSize: 13),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _RoutePathText(
-                      text: desc.routeDescription.isNotEmpty
-                          ? desc.routeDescription
-                          : desc.routeLongName,
-                      routeColor: routeColor,
+          const SizedBox(width: 8),
+          allBuses.when(
+            data: (busMap) {
+              final buses = busMap[desc.route] ?? [];
+              if (buses.isEmpty) {
+                return const Text(
+                  'No buses',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                );
+              }
+              return AnimatedSwitcherDefaults(
+                child: Container(
+                  key: ValueKey(buses.length),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.successBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${buses.length}',
+                    style: const TextStyle(
                       fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              activeBuses.when(
-                data: (buses) {
-                  if (buses.isEmpty) {
-                    return const Text(
-                      'No buses',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    );
-                  }
-                  return AnimatedSwitcherDefaults(
-                    child: Container(
-                      key: ValueKey(buses.length),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.successBg,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${buses.length}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                loading: () => const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                isSelected ? Icons.map : Icons.chevron_right,
-                size: 18,
-                color: isSelected ? routeColor : AppColors.textMuted,
-              ),
-            ],
+              );
+            },
+            loading: () => const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            error: (_, __) => const SizedBox.shrink(),
           ),
-        ),
+          const SizedBox(width: 4),
+          Icon(
+            isSelected ? Icons.map : Icons.chevron_right,
+            size: 18,
+            color: isSelected ? routeColor : AppColors.textMuted,
+          ),
+        ],
       ),
     );
   }
@@ -878,71 +868,4 @@ class _MarqueeScrollState extends State<_MarqueeScroll>
       ),
     );
   }
-}
-
-// ─── Timeline Painter ────────────────────────────────────────
-
-class _TimelinePainter extends CustomPainter {
-  final Color routeColor;
-  final bool isFirst;
-  final bool isLast;
-
-  _TimelinePainter({
-    required this.routeColor,
-    required this.isFirst,
-    required this.isLast,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final centerX = size.width / 2;
-    final centerY = size.height / 2;
-    const circleRadius = 5.0;
-    const borderWidth = 2.0;
-    const lineWidth = 2.0;
-
-    final linePaint = Paint()
-      ..color = routeColor.withValues(alpha: 0.2)
-      ..strokeWidth = lineWidth
-      ..style = PaintingStyle.stroke;
-
-    // Draw vertical line segments
-    if (!isFirst) {
-      canvas.drawLine(
-        Offset(centerX, 0),
-        Offset(centerX, centerY - circleRadius),
-        linePaint,
-      );
-    }
-    if (!isLast) {
-      canvas.drawLine(
-        Offset(centerX, centerY + circleRadius),
-        Offset(centerX, size.height),
-        linePaint,
-      );
-    }
-
-    // Draw circle fill
-    final fillPaint = Paint()
-      ..color = (isFirst || isLast) ? routeColor : AppColors.surface
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(centerX, centerY), circleRadius, fillPaint);
-
-    // Draw circle border
-    final borderPaint = Paint()
-      ..color = routeColor
-      ..strokeWidth = borderWidth
-      ..style = PaintingStyle.stroke;
-    canvas.drawCircle(
-      Offset(centerX, centerY),
-      circleRadius - borderWidth / 2,
-      borderPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TimelinePainter old) =>
-      routeColor != old.routeColor ||
-      isFirst != old.isFirst ||
-      isLast != old.isLast;
 }

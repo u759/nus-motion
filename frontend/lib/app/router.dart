@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/map_discovery/map_discovery_screen.dart';
+import 'package:frontend/features/map_discovery/models/navigation_state.dart';
 import 'package:frontend/features/search_routing/search_routing_screen.dart';
 import 'package:frontend/features/search_routing/route_detail_screen.dart';
 import 'package:frontend/features/active_transit/active_transit_screen.dart';
@@ -74,71 +76,97 @@ final router = GoRouter(
   ],
 );
 
-class BottomNavShell extends StatelessWidget {
+class BottomNavShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   const BottomNavShell({super.key, required this.navigationShell});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(
-            top: BorderSide(color: AppColors.borderLight, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              offset: Offset(0, -2),
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch navigation state to handle back for explore tab
+    final navState = ref.watch(navigationStateProvider);
+
+    // Allow system pop only when navigation state is idle OR not on explore tab
+    final canPop =
+        navigationShell.currentIndex != 0 ||
+        navState.status == NavigationStatus.idle;
+
+    return PopScope(
+      canPop: canPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+
+        // Only handle custom back for explore tab (index 0) with active navigation
+        if (navigationShell.currentIndex == 0) {
+          if (navState.route != null) {
+            // In route detail → go back to suggestions
+            ref.read(navigationStateProvider.notifier).deselectRoute();
+          } else if (navState.destination != null) {
+            // In suggestions → go back to explore
+            ref.read(navigationStateProvider.notifier).cancelNavigation();
+          }
+        }
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: navigationShell,
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(
+              top: BorderSide(color: AppColors.borderLight, width: 1),
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: BottomNavigationBar(
-              currentIndex: navigationShell.currentIndex,
-              onTap: (index) => navigationShell.goBranch(
-                index,
-                initialLocation: index == navigationShell.currentIndex,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 8,
+                offset: Offset(0, -2),
               ),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              selectedItemColor: AppColors.primary,
-              unselectedItemColor: AppColors.textMuted,
-              type: BottomNavigationBarType.fixed,
-              selectedFontSize: 10,
-              unselectedFontSize: 10,
-              selectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: BottomNavigationBar(
+                currentIndex: navigationShell.currentIndex,
+                onTap: (index) => navigationShell.goBranch(
+                  index,
+                  initialLocation: index == navigationShell.currentIndex,
+                ),
+                elevation: 0,
+                backgroundColor: Colors.transparent,
+                selectedItemColor: AppColors.primary,
+                unselectedItemColor: AppColors.textMuted,
+                type: BottomNavigationBarType.fixed,
+                selectedFontSize: 10,
+                unselectedFontSize: 10,
+                selectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.explore_outlined),
+                    activeIcon: Icon(Icons.explore),
+                    label: 'EXPLORE',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.route_outlined),
+                    activeIcon: Icon(Icons.route),
+                    label: 'PLAN',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.bookmark_outline),
+                    activeIcon: Icon(Icons.bookmark),
+                    label: 'SAVED',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.notifications_outlined),
+                    activeIcon: Icon(Icons.notifications),
+                    label: 'ALERTS',
+                  ),
+                ],
               ),
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.explore_outlined),
-                  activeIcon: Icon(Icons.explore),
-                  label: 'EXPLORE',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.route_outlined),
-                  activeIcon: Icon(Icons.route),
-                  label: 'PLAN',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.bookmark_outline),
-                  activeIcon: Icon(Icons.bookmark),
-                  label: 'SAVED',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.notifications_outlined),
-                  activeIcon: Icon(Icons.notifications),
-                  label: 'ALERTS',
-                ),
-              ],
             ),
           ),
         ),

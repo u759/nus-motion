@@ -25,3 +25,15 @@
 **Context:** NUS Motion doesn't require user accounts. Favorites, recent searches, and preferences are personal.
 **Decision:** Store all user data locally via Hive (Flutter). No server-side user storage, no auth.
 **Consequences:** Zero privacy/auth complexity. Trade-off: data doesn't sync across devices.
+
+---
+
+## ADR-004: Integrated Navigation State Machine
+**Status:** Accepted
+**Context:** The Plan screen is being deprecated. Navigation will be integrated into the Explore screen via a unified flow: search → route preview → navigate → arrived.
+**Decision:** Model navigation as a finite state machine using Riverpod `StateNotifier<NavigationState>`. States: `idle`, `searching`, `routePreview`, `navigating`, `arrived`. The notifier owns all transitions and encapsulates navigation logic.
+**Consequences:**
+- Single source of truth for navigation state across Explore screen.
+- UI subscribes to `NavigationStatus` to show/hide panels and sheets.
+- Leg advancement logic remains in notifier; geofencing is external.
+- Future extension: persist mid-navigation state for app restarts.

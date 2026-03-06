@@ -26,9 +26,10 @@ import java.util.stream.Collectors;
 public class RoutingService {
 
     private static final double EARTH_RADIUS_METERS = 6_371_000;
-    private static final double WALK_SPEED_MPS = 1.3;      // ~4.7 km/h
+    private static final double WALK_SPEED_MPS = 1.2;      // ~4.3 km/h (conservative for campus terrain)
+    private static final double PATH_WINDING_FACTOR = 1.4; // path distance ≈ 1.4× straight-line in urban areas
     private static final double BUS_SPEED_MPS = 4.8;       // ~17.3 km/h average campus speed
-    private static final double WALK_TIME_BUFFER = 1.15;   // user-friendly buffer
+    private static final double WALK_TIME_BUFFER = 1.15;   // user-friendly buffer (stairs, crossings, orientation)
     private static final double BUS_TIME_BUFFER = 1.20;    // traffic/stops buffer
     private static final int DWELL_SECONDS_PER_STOP = 20;
     private static final int TRANSFER_PENALTY_MIN = 3;
@@ -102,7 +103,7 @@ public class RoutingService {
                     if (destIdx <= originIdx) continue;
 
                     int walkOrigin = o.walkMinutes;
-                    int wait = estimateWaitMinutes(o.stop.name(), path.routeCode);
+                    int wait = estimateWaitMinutes(o.stop.name(), path.routeCode, walkOrigin);
                     int bus = estimateBusTravelMinutes(path, originIdx, destIdx);
                     int walkDest = d.walkMinutes;
 
@@ -135,16 +136,22 @@ public class RoutingService {
                             if (transferIdxA <= originIdx || transferIdxB >= destIdx) continue;
 
                             int walkOrigin = o.walkMinutes;
-                            int waitA = estimateWaitMinutes(o.stop.name(), pathA.routeCode);
+                            int waitA = estimateWaitMinutes(o.stop.name(), pathA.routeCode, walkOrigin);
                             int busA = estimateBusTravelMinutes(pathA, originIdx, transferIdxA);
 
-                            int waitB = TRANSFER_PENALTY_MIN + estimateWaitMinutes(transferStopName, pathB.routeCode);
+                            // For second bus: delay = walk + wait for first + ride first bus
+                            int delayToTransfer = walkOrigin + waitA + busA;
+                            int waitB = TRANSFER_PENALTY_MIN + estimateWaitMinutes(transferStopName, pathB.routeCode, delayToTransfer);
                             int busB = estimateBusTravelMinutes(pathB, transferIdxB, destIdx);
                             int walkDest = d.walkMinutes;
 
+                                BusStop transferStopA = pathA.stops.get(transferIdxA).stop;
+                                BusStop transferStopB = pathB.stops.get(transferIdxB).stop;
+
                             int total = walkOrigin + waitA + busA + waitB + busB + walkDest;
                             List<RouteLeg> legs = buildTransferLegs(pathA.routeCode, pathB.routeCode, o, d,
-                                    transferStopName, walkOrigin, waitA, busA, waitB, busB, walkDest);
+                                    transferStopName, transferStopA, transferStopB,
+                                    walkOrigin, waitA, busA, waitB, busB, walkDest);
 
                             candidates.add(new PlanCandidate(total, walkOrigin + walkDest, waitA + waitB,
                                     busA + busB, 1, legs));
@@ -249,7 +256,7 @@ public class RoutingService {
     }
 
     private List<RouteLeg> buildTransferLegs(String routeA, String routeB, CandidateStop originStop, CandidateStop destinationStop,
-                                             String transferStopName,
+                                             String transferStopName, BusStop transferStopA, BusStop transferStopB,
                                              int walkOrigin, int waitA, int busA, int waitB, int busB, int walkDest) {
         List<RouteLeg> legs = new ArrayList<>();
 
@@ -267,7 +274,7 @@ public class RoutingService {
         legs.add(new RouteLeg("BUS", routeA + " to transfer stop " + transferStopName, busA,
                 routeA, originStop.stop.longName(), transferStopName,
                 originStop.stop.latitude(), originStop.stop.longitude(),
-                null, null));
+            transferStopA.latitude(), transferStopA.longitude()));
 
         legs.add(new RouteLeg("WAIT", "Transfer and wait for " + routeB, waitB,
                 routeB, transferStopName, transferStopName,
@@ -275,7 +282,7 @@ public class RoutingService {
 
         legs.add(new RouteLeg("BUS", routeB + " from " + transferStopName + " to " + destinationStop.stop.longName(), busB,
                 routeB, transferStopName, destinationStop.stop.longName(),
-                null, null,
+            transferStopB.latitude(), transferStopB.longitude(),
                 destinationStop.stop.latitude(), destinationStop.stop.longitude()));
 
         if (walkDest > 0) {
@@ -305,7 +312,15 @@ public class RoutingService {
         return Math.max(1, (int) Math.ceil(seconds / 60.0));
     }
 
-    private int estimateWaitMinutes(String stopName, String routeCode) {
+    /**
+     * Estimate wait time at a bus stop, accounting for user's arrival delay.
+     *
+     * @param stopName            the bus stop name
+     * @param routeCode           the route code
+     * @param arrivalDelayMinutes how long until user arrives at the stop (walking time)
+     * @return estimated wait time in minutes after user arrives
+     */
+    private int estimateWaitMinutes(String stopName, String routeCode, int arrivalDelayMinutes) {
         try {
             ShuttleServiceResult result = nusApiService.getShuttleService(stopName);
             if (result == null || result.shuttles() == null || result.shuttles().isEmpty()) {
@@ -315,11 +330,34 @@ public class RoutingService {
             return result.shuttles().stream()
                     .filter(s -> equalsNormalized(s.name(), routeCode))
                     .findFirst()
-                    .map(s -> parseEtaMinutes(s.arrivalTime()))
+                    .map(s -> computeWaitAfterDelay(s, arrivalDelayMinutes))
                     .orElse(DEFAULT_WAIT_MIN);
         } catch (Exception ignored) {
             return DEFAULT_WAIT_MIN;
         }
+    }
+
+    /**
+     * Compute actual wait time given user's arrival delay.
+     * If user arrives before the first bus, wait = ETA - delay.
+     * If user misses first bus, check next bus. Otherwise use default frequency.
+     */
+    private int computeWaitAfterDelay(Shuttle shuttle, int arrivalDelayMinutes) {
+        int firstEta = parseEtaMinutes(shuttle.arrivalTime());
+
+        // User arrives before the first bus — they catch it
+        if (firstEta > arrivalDelayMinutes) {
+            return firstEta - arrivalDelayMinutes;
+        }
+
+        // User misses first bus — check next arrival
+        int nextEta = parseEtaMinutes(shuttle.nextArrivalTime());
+        if (nextEta > arrivalDelayMinutes) {
+            return nextEta - arrivalDelayMinutes;
+        }
+
+        // Both buses missed or no next bus info — use default frequency
+        return DEFAULT_WAIT_MIN;
     }
 
     private int parseEtaMinutes(String etaText) {
@@ -479,7 +517,9 @@ public class RoutingService {
 
     private int walkingMinutes(double distanceMeters) {
         if (distanceMeters <= 0) return 0;
-        double seconds = (distanceMeters / WALK_SPEED_MPS) * WALK_TIME_BUFFER;
+        // Apply winding factor to estimate actual path distance from straight-line distance
+        double pathDistance = distanceMeters * PATH_WINDING_FACTOR;
+        double seconds = (pathDistance / WALK_SPEED_MPS) * WALK_TIME_BUFFER;
         return Math.max(1, (int) Math.ceil(seconds / 60.0));
     }
 

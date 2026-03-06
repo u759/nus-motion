@@ -1,5 +1,6 @@
 class Shuttle {
   final String name;
+  final String busstopcode;
   final String arrivalTime;
   final String arrivalTimeVehPlate;
   final String nextArrivalTime;
@@ -10,6 +11,7 @@ class Shuttle {
 
   const Shuttle({
     required this.name,
+    required this.busstopcode,
     required this.arrivalTime,
     required this.arrivalTimeVehPlate,
     required this.nextArrivalTime,
@@ -21,6 +23,7 @@ class Shuttle {
 
   factory Shuttle.fromJson(Map<String, dynamic> json) => Shuttle(
     name: json['name'] as String? ?? '',
+    busstopcode: json['busstopcode'] as String? ?? '',
     arrivalTime: json['arrivalTime'] as String? ?? '-',
     arrivalTimeVehPlate: json['arrivalTime_veh_plate'] as String? ?? '',
     nextArrivalTime: json['nextArrivalTime'] as String? ?? '-',

@@ -28,6 +28,12 @@ If the backend returns `{ "LongName": "..." }`, the Dart model must have a field
 ### Always Handle Three States: Loading, Error, Empty
 Every `AsyncValue` consumer must handle `.loading`, `.error`, and `.data` (including empty data). Missing any state causes unhandled exceptions or blank screens.
 
+### Use ShuttleService Vehicle Plates for Next Bus Selection
+When highlighting which bus arrives next at a stop, use `arrivalTimeVehPlate` from the ShuttleService API — not `ActiveBus.first`. The ActiveBus list order is arbitrary; only ShuttleService knows which bus arrives next at a specific stop.
+
+### Walking Time Must Come From Backend
+Walking time is calculated ONLY in `RoutingService.walkingMinutes()` (backend). The frontend calls `/nearby-stops` with the user's location to get walking times. Never calculate walking time locally in the frontend — use the backend API as the single source of truth.
+
 ### Lifecycle-Aware Polling
 Polling timers that don't pause when the screen is inactive waste battery and API calls. Use `WidgetsBindingObserver` to pause/resume.
 

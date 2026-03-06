@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:frontend/core/network/api_client.dart';
@@ -122,43 +121,22 @@ final weatherProvider =
     });
 
 /// All bus stops sorted by distance from a given position, as NearbyStopResult.
+/// Uses backend calculation for walking time (single source of truth).
 final allStopsSortedByDistanceProvider =
     FutureProvider.family<List<NearbyStopResult>, ({double lat, double lng})>((
       ref,
       params,
-    ) async {
-      final stops = await ref.watch(stopsProvider.future);
-      final results = stops.map((stop) {
-        final distance = _haversine(
-          params.lat,
-          params.lng,
-          stop.latitude,
-          stop.longitude,
-        );
-        return NearbyStopResult(
-          stopName: stop.name,
-          stopDisplayName: stop.longName.isNotEmpty ? stop.longName : stop.name,
-          latitude: stop.latitude,
-          longitude: stop.longitude,
-          distanceMeters: distance,
-          walkingMinutes: (distance / 80).ceil(),
-        );
-      }).toList()..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
-      return results;
+    ) {
+      // Use backend with large radius to get all stops with proper walking time calculation
+      return ref
+          .watch(transitServiceProvider)
+          .getNearbyStops(
+            lat: params.lat,
+            lng: params.lng,
+            radius: 5000, // 5km — covers entire NUS campus
+            limit: 100, // all stops (there are ~30 bus stops)
+          );
     });
-
-double _haversine(double lat1, double lng1, double lat2, double lng2) {
-  const R = 6371000.0;
-  final dLat = (lat2 - lat1) * pi / 180;
-  final dLng = (lng2 - lng1) * pi / 180;
-  final a =
-      sin(dLat / 2) * sin(dLat / 2) +
-      cos(lat1 * pi / 180) *
-          cos(lat2 * pi / 180) *
-          sin(dLng / 2) *
-          sin(dLng / 2);
-  return R * 2 * atan2(sqrt(a), sqrt(1 - a));
-}
 
 // -- Non-parameterized feeds --
 final announcementsProvider = FutureProvider<List<Announcement>>((ref) {

@@ -1,4 +1,8 @@
 class RouteLeg {
+  static const String modeWalk = 'WALK';
+  static const String modeWait = 'WAIT';
+  static const String modeBus = 'BUS';
+
   final String mode;
   final String instruction;
   final int? minutes;
@@ -23,8 +27,32 @@ class RouteLeg {
     this.toLng,
   });
 
+  static String normalizeMode(String? rawMode) {
+    final normalizedMode = rawMode?.trim().toUpperCase() ?? '';
+
+    switch (normalizedMode) {
+      case 'WALK':
+        return modeWalk;
+      case 'WAIT':
+        return modeWait;
+      case 'RIDE':
+      case 'BUS':
+        return modeBus;
+      default:
+        return normalizedMode;
+    }
+  }
+
+  String get normalizedMode => normalizeMode(mode);
+
+  bool get isWalk => normalizedMode == modeWalk;
+
+  bool get isWait => normalizedMode == modeWait;
+
+  bool get isBus => normalizedMode == modeBus;
+
   factory RouteLeg.fromJson(Map<String, dynamic> json) => RouteLeg(
-    mode: json['mode'] as String? ?? '',
+    mode: normalizeMode(json['mode']?.toString()),
     instruction: json['instruction'] as String? ?? '',
     minutes: (json['minutes'] as num?)?.toInt(),
     routeCode: json['routeCode'] as String?,

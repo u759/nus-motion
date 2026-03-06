@@ -83,6 +83,71 @@ class MarkerPainter {
     return _toBitmap(recorder, size, dpr);
   }
 
+  /// Larger blue destination marker that stays within the selected-stop
+  /// visual language while adding a more prominent halo.
+  static Future<BitmapDescriptor> createDestinationMarker({
+    double dpr = 2.0,
+  }) async {
+    const double dpSize = 28;
+    final double size = dpSize * dpr;
+    const Color selectedBlue = Color(0xFF135BEC);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    final center = Offset(size / 2, size / 2);
+    final haloRadius = size / 2 - 1.0 * dpr;
+    final coreRadius = haloRadius * 0.64;
+
+    // Soft outer halo.
+    canvas.drawCircle(
+      center,
+      haloRadius,
+      Paint()
+        ..color = selectedBlue.withValues(alpha: 0.18)
+        ..style = PaintingStyle.fill,
+    );
+
+    // Subtle halo ring for definition against map tiles.
+    canvas.drawCircle(
+      center,
+      haloRadius,
+      Paint()
+        ..color = selectedBlue.withValues(alpha: 0.38)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5 * dpr,
+    );
+
+    // Core shadow.
+    canvas.drawCircle(
+      center + Offset(0, 1.0 * dpr),
+      coreRadius,
+      Paint()
+        ..color = selectedBlue.withValues(alpha: 0.22)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 * dpr),
+    );
+
+    // Blue center.
+    canvas.drawCircle(
+      center,
+      coreRadius,
+      Paint()
+        ..color = selectedBlue
+        ..style = PaintingStyle.fill,
+    );
+
+    // White focus dot.
+    canvas.drawCircle(
+      center,
+      coreRadius * 0.42,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill,
+    );
+
+    return _toBitmap(recorder, size, dpr);
+  }
+
   /// MD3-style circular bus icon with a load-percentage arc.
   ///
   /// The arc starts at 6 o'clock and sweeps clockwise. The arc colour
@@ -160,7 +225,7 @@ class MarkerPainter {
       );
     }
 
-    // --- Direction triangle (white, pointing in travel heading) ---
+    // --- Direction triangle (blue, pointing in travel heading) ---
     final headingRad = (direction - 90) * math.pi / 180;
     final triHeight = 6.0 * dpr;
     final triHalfBase = 4.0 * dpr;
@@ -190,7 +255,7 @@ class MarkerPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white
+        ..color = const Color(0xFF135BEC)
         ..style = PaintingStyle.fill,
     );
 
