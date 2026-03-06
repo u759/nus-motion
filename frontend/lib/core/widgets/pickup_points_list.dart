@@ -109,7 +109,8 @@ class PickupPointsList extends StatelessWidget {
     // Calculate progress within segment
     final d1 = distances[bestSegIdx];
     final d2 = distances[bestSegIdx + 1];
-    final progressInSegment = d1 / (d1 + d2); // 0 = at first stop, 1 = at second
+    final progressInSegment =
+        d1 / (d1 + d2); // 0 = at first stop, 1 = at second
 
     // Convert to global progress (0.0 to 1.0 across all stops)
     final segmentLength = 1.0 / (sortedPoints.length - 1);
