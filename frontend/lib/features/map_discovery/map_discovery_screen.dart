@@ -821,6 +821,14 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   Set<Marker> _buildMarkers(NavigationState navState) {
+    // Trigger bus position recalculation when bus data updates (all modes)
+    final allBuses = ref.watch(allActiveBusesProvider);
+    allBuses.whenData((busMap) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _updateBusScreenPositions(animate: true);
+      });
+    });
+
     if (navState.destination != null || navState.route != null) {
       return _buildRouteContextMarkers(navState);
     }
@@ -865,16 +873,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
         }
       });
     }
-
-    // Bus markers are now rendered as overlay widgets (see _buildBusOverlays)
-    // Trigger position recalculation when bus data updates
-    final allBuses = ref.watch(allActiveBusesProvider);
-    allBuses.whenData((busMap) {
-      // Schedule position recalculation after this frame (with animation for new data)
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _updateBusScreenPositions(animate: true);
-      });
-    });
 
     return markers;
   }
@@ -1315,11 +1313,18 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                 context: context,
                 removeBottom: true,
                 child: Container(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppColors.surface,
-                    border: Border(
-                      top: BorderSide(color: AppColors.borderLight),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
                   child: _buildBottomPanelContent(
                     navState,

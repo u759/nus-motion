@@ -95,14 +95,13 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
 
   void _onFocusChange() {
     if (!_focusNode.hasFocus) {
-      // Delay hiding to allow tap on results
+      // Delay to allow tap on results
       Future.delayed(const Duration(milliseconds: 150), () {
         if (!_focusNode.hasFocus && mounted) {
           _hideDropdown();
         }
       });
     }
-    // Don't show dropdown on focus — only when typing
   }
 
   void _showDropdown() {
@@ -387,8 +386,12 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
         child: Row(
           children: [
             const Padding(
-              padding: EdgeInsets.only(left: 16),
-              child: Icon(Icons.search, color: AppColors.textMuted, size: 22),
+              padding: EdgeInsets.only(left: 12),
+              child: Icon(
+                Icons.search,
+                color: AppColors.textSecondary,
+                size: 22,
+              ),
             ),
             Expanded(
               child: TextField(
@@ -429,7 +432,7 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
                 onTap: () {
                   _controller.clear();
                   setState(() => _query = '');
-                  _updateDropdown();
+                  _hideDropdown();
                 },
                 child: const Padding(
                   padding: EdgeInsets.only(right: 12),

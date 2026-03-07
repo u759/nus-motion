@@ -519,13 +519,20 @@ class _RouteCard extends ConsumerWidget {
               color: AppColors.success.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              liveEta.toLowerCase() == 'arr' ? 'Arriving' : '$liveEta min',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.success,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const _PulsingDot(color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  liveEta.toLowerCase() == 'arr' ? 'Arriving' : '$liveEta min',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -556,4 +563,52 @@ class _RouteCard extends ConsumerWidget {
   }
 }
 
-// Live ETA shown as chip in _buildTimeBreakdown row
+/// Animated pulsing dot indicator for live data.
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  final double size;
+
+  const _PulsingDot({required this.color, this.size = 8});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.color.withValues(
+              alpha: 0.4 + 0.6 * _controller.value,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

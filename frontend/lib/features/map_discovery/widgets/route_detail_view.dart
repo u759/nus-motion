@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:frontend/app/theme.dart';
+import 'package:frontend/features/map_discovery/models/navigation_state.dart';
 import 'package:frontend/core/widgets/pickup_points_list.dart';
+import 'package:frontend/core/widgets/pulsing_dot.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/data/models/pickup_point.dart';
 import 'package:frontend/data/models/route_plan_result.dart';
@@ -34,6 +37,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
+  Timer? _refreshTimer;
 
   /// Tracks which bus leg indices are currently expanded to show stops.
   final Set<int> _expandedLegs = {};
@@ -61,6 +65,29 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     );
     _animController.forward();
     widget.onRouteFocusRequested?.call();
+    _startRefreshTimer();
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) {
+        _refreshRouteData();
+      }
+    });
+  }
+
+  void _refreshRouteData() {
+    final navState = ref.read(navigationStateProvider);
+    if (navState.destination == null) return;
+
+    // Build query params using user position
+    final from = widget.userPosition != null
+        ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
+        : 'Current Location';
+    final to = navState.destination!.name;
+
+    // Invalidate to trigger fresh fetch
+    ref.invalidate(routeProvider((from: from, to: to)));
   }
 
   @override
@@ -73,6 +100,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
@@ -80,15 +108,16 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final topInset = MediaQuery.of(context).padding.top;
     final panelHeight = screenHeight * 0.45;
+
+    // Watch routeProvider for fresh data
+    final navState = ref.watch(navigationStateProvider);
+    final displayRoute = _getDisplayRoute(navState);
 
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Stack(
         children: [
-          // Back button floats at top
-          Positioned(top: topInset + 12, left: 16, child: _buildBackButton()),
           // Bottom panel
           Positioned(
             left: 0,
@@ -111,7 +140,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               ),
               child: Column(
                 children: [
-                  _buildPanelHeader(),
+                  _buildPanelHeader(displayRoute),
                   const Divider(height: 1, color: AppColors.borderLight),
                   Expanded(
                     child: SingleChildScrollView(
@@ -119,7 +148,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
                         horizontal: 20,
                         vertical: 16,
                       ),
-                      child: _buildJourneyTimeline(),
+                      child: _buildJourneyTimeline(displayRoute),
                     ),
                   ),
                 ],
@@ -131,43 +160,85 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     );
   }
 
-  Widget _buildBackButton() {
-    return GestureDetector(
-      onTap: widget.onBack,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.arrow_back_ios_new,
-          color: AppColors.textPrimary,
-          size: 18,
-        ),
-      ),
+  /// Gets the display route by watching fresh data from routeProvider.
+  /// Falls back to widget.route if no fresh data or matching route found.
+  RoutePlanResult _getDisplayRoute(NavigationState navState) {
+    if (navState.destination == null) return widget.route;
+
+    final from = widget.userPosition != null
+        ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
+        : 'Current Location';
+    final to = navState.destination!.name;
+
+    final routesAsync = ref.watch(routeProvider((from: from, to: to)));
+
+    return routesAsync.when(
+      data: (routes) =>
+          _findMatchingRoute(routes, widget.route) ?? widget.route,
+      loading: () => widget.route,
+      error: (_, __) => widget.route,
     );
   }
 
-  Widget _buildPanelHeader() {
+  /// Finds a route matching the target by comparing bus leg sequences.
+  RoutePlanResult? _findMatchingRoute(
+    List<RoutePlanResult> routes,
+    RoutePlanResult target,
+  ) {
+    for (final route in routes) {
+      if (_routesMatch(route, target)) {
+        return route;
+      }
+    }
+    return null;
+  }
+
+  /// Checks if two routes have the same bus sequence (same route codes in order).
+  bool _routesMatch(RoutePlanResult a, RoutePlanResult b) {
+    final aBuses = a.legs
+        .where((l) => l.isBus)
+        .map((l) => l.routeCode)
+        .toList();
+    final bBuses = b.legs
+        .where((l) => l.isBus)
+        .map((l) => l.routeCode)
+        .toList();
+
+    if (aBuses.length != bBuses.length) return false;
+    for (int i = 0; i < aBuses.length; i++) {
+      if (aBuses[i] != bBuses[i]) return false;
+    }
+    return true;
+  }
+
+  Widget _buildPanelHeader(RoutePlanResult route) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
       child: Row(
         children: [
-          ..._buildRouteBadges(),
+          // Back arrow
+          GestureDetector(
+            onTap: widget.onBack,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new,
+                color: AppColors.textPrimary,
+                size: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ..._buildRouteBadges(route),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              widget.route.to,
+              route.to,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -185,7 +256,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '${widget.route.totalMinutes} min',
+              '${route.totalMinutes} min',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -198,9 +269,9 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     );
   }
 
-  List<Widget> _buildRouteBadges() {
+  List<Widget> _buildRouteBadges(RoutePlanResult route) {
     final badges = <Widget>[];
-    final busLegs = widget.route.legs.where((leg) => leg.isBus).toList();
+    final busLegs = route.legs.where((leg) => leg.isBus).toList();
 
     for (int i = 0; i < busLegs.length; i++) {
       if (busLegs[i].routeCode != null) {
@@ -246,10 +317,10 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
 
   /// Determines which leg index is currently active based on user position.
   /// Returns null if position is unavailable or cannot be determined.
-  int? _getCurrentLegIndex() {
+  int? _getCurrentLegIndex(RoutePlanResult route) {
     if (widget.userPosition == null) return null;
 
-    final legs = widget.route.legs;
+    final legs = route.legs;
     final userLat = widget.userPosition!.latitude;
     final userLng = widget.userPosition!.longitude;
 
@@ -342,8 +413,8 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
-  Widget _buildJourneyTimeline() {
-    final legs = widget.route.legs;
+  Widget _buildJourneyTimeline(RoutePlanResult route) {
+    final legs = route.legs;
     if (legs.isEmpty) {
       return const Center(
         child: Text(
@@ -353,7 +424,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
       );
     }
 
-    final currentLegIndex = _getCurrentLegIndex();
+    final currentLegIndex = _getCurrentLegIndex(route);
 
     return Column(
       children: [
@@ -435,7 +506,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
             ),
           ),
         ],
-        if (leg.minutes != null) ...[
+        if (leg.minutes != null && !isWait) ...[
           const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -450,6 +521,32 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
                 fontWeight: FontWeight.w600,
                 color: AppColors.textSecondary,
               ),
+            ),
+          ),
+        ],
+        // Green chip with pulsing dot for wait time
+        if (isWait && leg.minutes != null) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const PulsingDot(color: AppColors.success),
+                const SizedBox(width: 4),
+                Text(
+                  '${leg.minutes} min',
+                  style: const TextStyle(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -515,24 +612,6 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
       ],
     );
 
-    // Wrap with highlight container if active (gradient overlay, no border)
-    if (isActive) {
-      return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.transparent,
-              AppColors.success.withValues(alpha: 0.15),
-            ],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: rowContent,
-      );
-    }
-
     return rowContent;
   }
 
@@ -558,6 +637,8 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           child: PickupPointsList(
             points: displayPoints,
             routeCode: leg.routeCode!,
+            userLat: widget.userPosition?.latitude,
+            userLng: widget.userPosition?.longitude,
           ),
         );
       },

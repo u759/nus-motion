@@ -15,6 +15,8 @@ class PickupPointsList extends StatelessWidget {
     this.selectedStopCode,
     this.activeBuses,
     this.onStopTapped,
+    this.userLat,
+    this.userLng,
   });
 
   final List<PickupPoint> points;
@@ -28,6 +30,12 @@ class PickupPointsList extends StatelessWidget {
 
   /// Callback when a stop is tapped (for centering map, etc.)
   final void Function(PickupPoint stop)? onStopTapped;
+
+  /// User's current latitude (for showing user position on timeline)
+  final double? userLat;
+
+  /// User's current longitude (for showing user position on timeline)
+  final double? userLng;
 
   /// Row height approximation for positioning bus markers.
   static const double _rowHeight = 36.0;
@@ -53,8 +61,14 @@ class PickupPointsList extends StatelessWidget {
         ),
     ];
 
-    // If no buses, return plain column
-    if (activeBuses == null || activeBuses!.isEmpty || sorted.length < 2) {
+    // Check if we need any markers
+    final hasActiveBuses =
+        activeBuses != null && activeBuses!.isNotEmpty && sorted.length >= 2;
+    final showUserMarker =
+        userLat != null && userLng != null && sorted.length >= 2;
+
+    // If no markers needed, return plain column
+    if (!hasActiveBuses && !showUserMarker) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: rows,
@@ -69,15 +83,58 @@ class PickupPointsList extends StatelessWidget {
       children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
         // Bus markers overlay
-        for (final bus in activeBuses!)
-          _TimelineBusMarker(
-            bus: bus,
-            progress: _calculateBusProgress(bus, sorted),
+        if (hasActiveBuses)
+          for (final bus in activeBuses!)
+            _TimelineBusMarker(
+              bus: bus,
+              progress: _calculateBusProgress(bus, sorted),
+              totalHeight: totalHeight,
+              routeColor: routeColor,
+            ),
+        // User position marker
+        if (showUserMarker)
+          _TimelineUserMarker(
+            progress: _calculateUserProgress(userLat!, userLng!, sorted),
             totalHeight: totalHeight,
-            routeColor: routeColor,
           ),
       ],
     );
+  }
+
+  /// Calculates the progress (0.0 to 1.0) of the user along the route.
+  ///
+  /// Uses Haversine distance to find which segment the user is on,
+  /// then calculates progress as a distance ratio within that segment.
+  double _calculateUserProgress(
+    double lat,
+    double lng,
+    List<PickupPoint> sortedPoints,
+  ) {
+    if (sortedPoints.length < 2) return 0.0;
+
+    final distances = sortedPoints
+        .map((p) => _haversineDistance(lat, lng, p.lat, p.lng))
+        .toList();
+
+    int bestSegIdx = 0;
+    double minSum = double.infinity;
+
+    for (int i = 0; i < sortedPoints.length - 1; i++) {
+      final d1 = distances[i];
+      final d2 = distances[i + 1];
+      final sum = d1 + d2;
+      if (sum < minSum) {
+        minSum = sum;
+        bestSegIdx = i;
+      }
+    }
+
+    final d1 = distances[bestSegIdx];
+    final d2 = distances[bestSegIdx + 1];
+    final progressInSegment = d1 / (d1 + d2);
+
+    final segmentLength = 1.0 / (sortedPoints.length - 1);
+    return (bestSegIdx + progressInSegment) * segmentLength;
   }
 
   /// Calculates the progress (0.0 to 1.0) of a bus along the route.
@@ -392,7 +449,9 @@ class _TimelineBusMarker extends StatelessWidget {
     final effectiveHeight = totalHeight - PickupPointsList._rowHeight;
     final top = halfRowHeight + (progress * effectiveHeight) - (markerSize / 2);
 
-    return Positioned(
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
       left: timelineCenterX - markerSize / 2,
       top: top,
       width: markerSize,
@@ -411,6 +470,55 @@ class _TimelineBusMarker extends StatelessWidget {
           ],
         ),
         child: const Icon(Icons.directions_bus, color: Colors.white, size: 12),
+      ),
+    );
+  }
+}
+
+// ─── Timeline User Marker ─────────────────────────────────────
+
+class _TimelineUserMarker extends StatelessWidget {
+  final double progress; // 0.0 to 1.0
+  final double totalHeight;
+
+  const _TimelineUserMarker({
+    required this.progress,
+    required this.totalHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Center of timeline column is at x=15 (width 30 / 2)
+    const timelineCenterX = 15.0;
+    const markerSize = 20.0;
+
+    // Calculate y position based on progress
+    // Account for row padding (first circle is at ~rowHeight/2)
+    final halfRowHeight = PickupPointsList._rowHeight / 2;
+    final effectiveHeight = totalHeight - PickupPointsList._rowHeight;
+    final top = halfRowHeight + (progress * effectiveHeight) - (markerSize / 2);
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+      left: timelineCenterX - markerSize / 2,
+      top: top.clamp(0, totalHeight - markerSize),
+      width: markerSize,
+      height: markerSize,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.person, color: Colors.white, size: 12),
       ),
     );
   }
