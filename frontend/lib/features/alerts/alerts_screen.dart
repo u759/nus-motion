@@ -10,6 +10,7 @@ import 'package:frontend/data/models/announcement.dart';
 import 'package:frontend/data/models/ticker_tape.dart';
 import 'package:frontend/state/providers.dart';
 import 'package:frontend/features/alerts/widgets/alert_card.dart';
+import 'package:frontend/features/alerts/widgets/staggered_list_item.dart';
 import 'package:frontend/features/alerts/widgets/weather_card.dart';
 
 class AlertsScreen extends ConsumerStatefulWidget {
@@ -81,7 +82,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
               ),
             ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
+              preferredSize: const Size.fromHeight(52),
               child: Container(
                 decoration: const BoxDecoration(
                   border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -173,19 +174,31 @@ class _AlertsList extends StatelessWidget {
           data: (items) {
             var filtered = items;
             if (filter == 'service') {
+              // Service updates: delays, suspensions, disruptions
               filtered = items
                   .where(
-                    (a) =>
-                        a.priority.toLowerCase().contains('high') ||
-                        a.status.toLowerCase() == 'active',
+                    (a) {
+                      final t = a.text.toLowerCase();
+                      return t.contains('delay') ||
+                          t.contains('suspend') ||
+                          t.contains('service') ||
+                          t.contains('disruption') ||
+                          t.contains('cancelled');
+                    },
                   )
                   .toList();
             } else if (filter == 'maintenance') {
+              // Maintenance: construction, road works, scheduled works
               filtered = items
                   .where(
-                    (a) =>
-                        a.priority.toLowerCase().contains('low') ||
-                        a.text.toLowerCase().contains('maintenance'),
+                    (a) {
+                      final t = a.text.toLowerCase();
+                      return t.contains('maintenance') ||
+                          t.contains('road') ||
+                          t.contains('construction') ||
+                          t.contains('repair') ||
+                          t.contains('upgrade');
+                    },
                   )
                   .toList();
             }
@@ -242,8 +255,12 @@ class _AlertsList extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ...current.map(
-                    (a) => AlertCard(key: ValueKey(a.id), announcement: a),
+                  ...current.asMap().entries.map(
+                    (e) => StaggeredListItem(
+                      key: ValueKey(e.value.id),
+                      index: e.key,
+                      child: AlertCard(announcement: e.value),
+                    ),
                   ),
                 ],
                 if (past.isNotEmpty) ...[
@@ -258,11 +275,14 @@ class _AlertsList extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ...past.map(
-                    (a) => Opacity(
-                      key: ValueKey(a.id),
-                      opacity: 0.6,
-                      child: AlertCard(announcement: a, isResolved: true),
+                  ...past.asMap().entries.map(
+                    (e) => StaggeredListItem(
+                      key: ValueKey(e.value.id),
+                      index: e.key + current.length,
+                      child: Opacity(
+                        opacity: 0.6,
+                        child: AlertCard(announcement: e.value, isResolved: true),
+                      ),
                     ),
                   ),
                 ],
@@ -292,7 +312,7 @@ class _AlertsList extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 ...tapes.map(
-                  (t) => _TickerCard(key: ValueKey(t.message), tape: t),
+                  (t) => _TickerCard(key: ValueKey(t.id), tape: t),
                 ),
               ],
             );

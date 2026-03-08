@@ -7,7 +7,7 @@ import 'package:frontend/data/models/active_bus.dart';
 import 'package:frontend/data/models/pickup_point.dart';
 
 /// A timeline-style list of pickup points (bus stops) for a route.
-class PickupPointsList extends StatelessWidget {
+class PickupPointsList extends StatefulWidget {
   const PickupPointsList({
     super.key,
     required this.points,
@@ -41,13 +41,47 @@ class PickupPointsList extends StatelessWidget {
   static const double _rowHeight = 36.0;
 
   @override
+  State<PickupPointsList> createState() => _PickupPointsListState();
+}
+
+class _PickupPointsListState extends State<PickupPointsList> {
+  final _rowKeys = <String, GlobalKey>{};
+
+  GlobalKey _keyFor(String stopCode) =>
+      _rowKeys.putIfAbsent(stopCode, () => GlobalKey());
+
+  @override
+  void didUpdateWidget(covariant PickupPointsList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Scroll to highlighted stop when selectedStopCode changes
+    if (widget.selectedStopCode != null &&
+        widget.selectedStopCode != oldWidget.selectedStopCode) {
+      _scrollToSelectedStop();
+    }
+  }
+
+  void _scrollToSelectedStop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _rowKeys[widget.selectedStopCode];
+      if (key?.currentContext == null) return;
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.3, // Show stop slightly above center
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final routeColor = RouteBadge.colorForRoute(routeCode);
-    final sorted = [...points]..sort((a, b) => a.seq.compareTo(b.seq));
+    final routeColor = RouteBadge.colorForRoute(widget.routeCode);
+    final sorted = [...widget.points]..sort((a, b) => a.seq.compareTo(b.seq));
 
     final rows = [
       for (int i = 0; i < sorted.length; i++)
         _PickupPointRow(
+          key: _keyFor(sorted[i].busstopcode),
           index: i + 1,
           name: sorted[i].longName.isNotEmpty
               ? sorted[i].longName
@@ -56,16 +90,16 @@ class PickupPointsList extends StatelessWidget {
           routeColor: routeColor,
           isFirst: i == 0,
           isLast: i == sorted.length - 1,
-          isHighlighted: sorted[i].busstopcode == selectedStopCode,
-          onTap: onStopTapped != null ? () => onStopTapped!(sorted[i]) : null,
+          isHighlighted: sorted[i].busstopcode == widget.selectedStopCode,
+          onTap: widget.onStopTapped != null ? () => widget.onStopTapped!(sorted[i]) : null,
         ),
     ];
 
     // Check if we need any markers
     final hasActiveBuses =
-        activeBuses != null && activeBuses!.isNotEmpty && sorted.length >= 2;
+        widget.activeBuses != null && widget.activeBuses!.isNotEmpty && sorted.length >= 2;
     final showUserMarker =
-        userLat != null && userLng != null && sorted.length >= 2;
+        widget.userLat != null && widget.userLng != null && sorted.length >= 2;
 
     // If no markers needed, return plain column
     if (!hasActiveBuses && !showUserMarker) {
@@ -76,7 +110,7 @@ class PickupPointsList extends StatelessWidget {
     }
 
     // Calculate approximate total height
-    final totalHeight = sorted.length * _rowHeight;
+    final totalHeight = sorted.length * PickupPointsList._rowHeight;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -84,7 +118,7 @@ class PickupPointsList extends StatelessWidget {
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
         // Bus markers overlay
         if (hasActiveBuses)
-          for (final bus in activeBuses!)
+          for (final bus in widget.activeBuses!)
             _TimelineBusMarker(
               bus: bus,
               progress: _calculateBusProgress(bus, sorted),
@@ -94,7 +128,7 @@ class PickupPointsList extends StatelessWidget {
         // User position marker
         if (showUserMarker)
           _TimelineUserMarker(
-            progress: _calculateUserProgress(userLat!, userLng!, sorted),
+            progress: _calculateUserProgress(widget.userLat!, widget.userLng!, sorted),
             totalHeight: totalHeight,
           ),
       ],
@@ -210,6 +244,7 @@ class _PickupPointRow extends StatefulWidget {
   final VoidCallback? onTap;
 
   const _PickupPointRow({
+    super.key,
     required this.index,
     required this.name,
     required this.shortName,

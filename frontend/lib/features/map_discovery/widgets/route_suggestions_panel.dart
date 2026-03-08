@@ -566,9 +566,8 @@ class _RouteCard extends ConsumerWidget {
 /// Animated pulsing dot indicator for live data.
 class _PulsingDot extends StatefulWidget {
   final Color color;
-  final double size;
 
-  const _PulsingDot({required this.color, this.size = 8});
+  const _PulsingDot({required this.color});
 
   @override
   State<_PulsingDot> createState() => _PulsingDotState();
@@ -599,8 +598,8 @@ class _PulsingDotState extends State<_PulsingDot>
       animation: _controller,
       builder: (context, child) {
         return Container(
-          width: widget.size,
-          height: widget.size,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: widget.color.withValues(

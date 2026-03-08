@@ -3,9 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/features/map_discovery/map_discovery_screen.dart';
 import 'package:frontend/features/map_discovery/models/navigation_state.dart';
-import 'package:frontend/features/search_routing/search_routing_screen.dart';
-import 'package:frontend/features/search_routing/route_detail_screen.dart';
-import 'package:frontend/features/active_transit/active_transit_screen.dart';
 import 'package:frontend/features/favorites/favorites_screen.dart';
 import 'package:frontend/features/alerts/alerts_screen.dart';
 import 'package:frontend/app/theme.dart';
@@ -26,32 +23,6 @@ final router = GoRouter(
             GoRoute(
               path: '/',
               builder: (context, state) => const MapDiscoveryScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/search',
-              builder: (context, state) => const SearchRoutingScreen(),
-              routes: [
-                GoRoute(
-                  path: 'detail',
-                  parentNavigatorKey: _rootNavigatorKey,
-                  builder: (context, state) {
-                    final extra = state.extra as Map<String, dynamic>?;
-                    return RouteDetailScreen(routeData: extra);
-                  },
-                ),
-                GoRoute(
-                  path: 'active',
-                  parentNavigatorKey: _rootNavigatorKey,
-                  builder: (context, state) {
-                    final extra = state.extra as Map<String, dynamic>?;
-                    return ActiveTransitScreen(tripData: extra);
-                  },
-                ),
-              ],
             ),
           ],
         ),
@@ -149,11 +120,6 @@ class BottomNavShell extends ConsumerWidget {
                     icon: Icon(Icons.explore_outlined),
                     activeIcon: Icon(Icons.explore),
                     label: 'EXPLORE',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.route_outlined),
-                    activeIcon: Icon(Icons.route),
-                    label: 'PLAN',
                   ),
                   BottomNavigationBarItem(
                     icon: Icon(Icons.bookmark_outline),

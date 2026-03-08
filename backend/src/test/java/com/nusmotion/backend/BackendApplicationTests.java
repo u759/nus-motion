@@ -118,7 +118,7 @@ class BackendApplicationTests {
 	@DisplayName("GET /api/announcements returns service announcements")
 	void getAnnouncementsReturnsAnnouncements() throws Exception {
 		when(nusApiService.getAnnouncements()).thenReturn(List.of(
-				new Announcement("100", "Test alert", "Active", "High", "A1,D1")
+				new Announcement("100", "Test alert", "Active", "High", "A1,D1", null, null)
 		));
 
 		mockMvc.perform(get("/api/announcements"))
@@ -170,7 +170,7 @@ class BackendApplicationTests {
 	@DisplayName("GET /api/ticker-tapes returns ticker tape alerts")
 	void getTickerTapesReturnsList() throws Exception {
 		when(nusApiService.getTickerTapes()).thenReturn(List.of(
-				new TickerTape(null, null, "A1", "246", "Service delay due to heavy rain", "High", "Active")
+				new TickerTape(null, null, "A1", "246", "Service delay due to heavy rain", "High", "Active", null, null, null, null)
 		));
 
 		mockMvc.perform(get("/api/ticker-tapes"))

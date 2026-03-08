@@ -207,6 +207,11 @@ class FavoriteRoutesNotifier
       state.any((r) => r.from == from && r.to == to);
 }
 
+// -- Cross-screen communication --
+/// Pending stop selection from Saved tab (or other screens).
+/// When set, MapDiscoveryScreen will select this stop and clear the provider.
+final pendingStopSelectionProvider = StateProvider<String?>((ref) => null);
+
 // -- Recent Searches --
 final recentSearchesProvider =
     StateNotifierProvider<

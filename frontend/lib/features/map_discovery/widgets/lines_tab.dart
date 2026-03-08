@@ -15,6 +15,7 @@ class LinesTab extends ConsumerStatefulWidget {
   final double userLng;
   final String? selectedRoute;
   final String? selectedBusPlate;
+  final String? highlightedStopCode;
   final bool shouldScrollToSelection;
   final ValueChanged<String> onRouteSelected;
   final void Function(String route, String plate)? onBusSelected;
@@ -26,6 +27,7 @@ class LinesTab extends ConsumerStatefulWidget {
     required this.userLng,
     this.selectedRoute,
     this.selectedBusPlate,
+    this.highlightedStopCode,
     this.shouldScrollToSelection = false,
     required this.onRouteSelected,
     this.onBusSelected,
@@ -116,7 +118,11 @@ class _LinesTabState extends ConsumerState<LinesTab> {
                   key: ValueKey('line_detail_$_openedRoute'),
                   desc: openedDesc,
                   selectedBusPlate: widget.selectedBusPlate,
-                  onBack: () => setState(() => _openedRoute = null),
+                  highlightedStopCode: widget.highlightedStopCode,
+                  onBack: () {
+                    widget.onRouteSelected(_openedRoute!);
+                    setState(() => _openedRoute = null);
+                  },
                   onBusSelected: widget.onBusSelected,
                   onCenterMap: widget.onCenterMap,
                 )
@@ -127,6 +133,9 @@ class _LinesTabState extends ConsumerState<LinesTab> {
                   scrollController: _scrollController,
                   keyFor: _keyFor,
                   onRouteSelected: (route) {
+                    if (widget.selectedRoute != route) {
+                      widget.onRouteSelected(route);
+                    }
                     setState(() => _openedRoute = route);
                   },
                 ),
@@ -229,6 +238,7 @@ class _LineListView extends StatelessWidget {
 class _LineDetailView extends ConsumerWidget {
   final ServiceDescription desc;
   final String? selectedBusPlate;
+  final String? highlightedStopCode;
   final VoidCallback onBack;
   final void Function(String route, String plate)? onBusSelected;
   final void Function(double lat, double lng, String stopCode)? onCenterMap;
@@ -237,6 +247,7 @@ class _LineDetailView extends ConsumerWidget {
     super.key,
     required this.desc,
     this.selectedBusPlate,
+    this.highlightedStopCode,
     required this.onBack,
     this.onBusSelected,
     this.onCenterMap,
@@ -379,6 +390,7 @@ class _LineDetailView extends ConsumerWidget {
                     child: PickupPointsList(
                       points: points,
                       routeCode: desc.route,
+                      selectedStopCode: highlightedStopCode,
                       activeBuses: allBuses.valueOrNull?[desc.route],
                       onStopTapped: onCenterMap != null
                           ? (stop) => onCenterMap!(

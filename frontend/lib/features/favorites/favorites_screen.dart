@@ -92,7 +92,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                     (r) => _FavoriteRouteCard(
                       from: r.from,
                       to: r.to,
-                      onTap: () => context.go('/search'),
+                      onTap: () => context.go('/'),
                       onDismissed: () => ref
                           .read(favoriteRoutesProvider.notifier)
                           .toggle(r.from, r.to),
@@ -125,7 +125,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                     (r) => _RecentSearchTile(
                       from: r.from,
                       to: r.to,
-                      onTap: () => context.go('/search'),
+                      onTap: () => context.go('/'),
                     ),
                   ),
                 ],
@@ -159,6 +159,13 @@ class _FavoriteStopCard extends ConsumerWidget {
 
   const _FavoriteStopCard({required this.stopName, required this.onDismissed});
 
+  void _navigateToStop(BuildContext context, WidgetRef ref) {
+    // Set the pending stop selection — MapDiscoveryScreen will pick this up
+    ref.read(pendingStopSelectionProvider.notifier).state = stopName;
+    // Navigate to Explore tab
+    context.go('/');
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shuttles = ref.watch(shuttlesProvider(stopName));
@@ -176,80 +183,83 @@ class _FavoriteStopCard extends ConsumerWidget {
         ),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.directions_bus,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    stopName,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+      child: GestureDetector(
+        onTap: () => _navigateToStop(context, ref),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.directions_bus,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      stopName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
-                ),
-                Icon(Icons.bookmark, color: AppColors.primary, size: 20),
-              ],
-            ),
-            const SizedBox(height: 8),
-            shuttles.when(
-              data: (result) {
-                if (result.shuttles.isEmpty) {
-                  return const Text(
-                    'No services',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                  );
-                }
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: result.shuttles.take(3).map((s) {
-                    final eta = EtaFormatter.format(s.arrivalTime);
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RouteBadge(routeCode: s.name, fontSize: 10),
-                        const SizedBox(width: 4),
-                        Text(
-                          eta,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                  Icon(Icons.bookmark, color: AppColors.primary, size: 20),
+                ],
+              ),
+              const SizedBox(height: 8),
+              shuttles.when(
+                data: (result) {
+                  if (result.shuttles.isEmpty) {
+                    return const Text(
+                      'No services',
+                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                     );
-                  }).toList(),
-                );
-              },
-              loading: () => const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                  }
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: result.shuttles.take(3).map((s) {
+                      final eta = EtaFormatter.format(s.arrivalTime);
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RouteBadge(routeCode: s.name, fontSize: 10),
+                          const SizedBox(width: 4),
+                          Text(
+                            eta,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  );
+                },
+                loading: () => const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                error: (_, __) => const Text(
+                  'Unavailable',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                ),
               ),
-              error: (_, __) => const Text(
-                'Unavailable',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

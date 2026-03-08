@@ -22,6 +22,7 @@ import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/features/map_discovery/widgets/stops_tab.dart';
 import 'package:frontend/features/map_discovery/widgets/lines_tab.dart';
 import 'package:frontend/features/map_discovery/widgets/bus_overlay_marker.dart';
+import 'package:frontend/features/map_discovery/widgets/location_overlay_marker.dart';
 import 'package:frontend/features/map_discovery/widgets/search_dropdown.dart';
 import 'package:frontend/features/map_discovery/widgets/route_suggestions_panel.dart';
 import 'package:frontend/features/map_discovery/widgets/route_detail_view.dart';
@@ -84,6 +85,11 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   // Last known map size for resize detection
   Size? _lastMapSize;
 
+  // Location overlay state (custom compass-heading marker)
+  StreamSubscription<Position>? _positionStreamSubscription;
+  Position? _streamPosition; // Real-time position from Geolocator stream
+  Offset? _locationScreenPosition; // Screen coordinates for location marker
+
   static const _nusCenter = LatLng(
     AppConstants.nusLatitude,
     AppConstants.nusLongitude,
@@ -126,14 +132,47 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       }
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
-      setState(() => _lastPosition = pos);
+      setState(() {
+        _lastPosition = pos;
+        _streamPosition = pos;
+      });
       _mapController?.animateCamera(
         CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
       );
+
+      // Subscribe to position stream for real-time location updates
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5, // Update every 5 meters
+        ),
+      ).listen((position) {
+        if (!mounted) return;
+        setState(() => _streamPosition = position);
+        _updateLocationScreenPosition();
+      });
     } catch (_) {
       // Location unavailable
     }
     _startPolling();
+  }
+
+  /// Update screen coordinates for the location marker.
+  void _updateLocationScreenPosition() {
+    final camera = _currentCameraPosition;
+    final mapSize = _lastMapSize;
+    final position = _streamPosition;
+    if (camera == null || mapSize == null || mapSize.isEmpty || position == null) {
+      return;
+    }
+
+    final screenPos = _latLngToScreen(
+      LatLng(position.latitude, position.longitude),
+      camera,
+      mapSize,
+    );
+
+    setState(() => _locationScreenPosition = screenPos);
   }
 
   Future<void> _generateIcons() async {
@@ -220,6 +259,29 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
         setState(() {
           _highlightedStop = null;
         });
+      }
+    });
+  }
+
+  /// Highlights a stop when viewing a route (from map marker tap).
+  /// Does NOT clear the selected route or open the stop detail view.
+  void _highlightStopInRoute(String stopCode) {
+    setState(() {
+      _highlightedStop = stopCode;
+      // Don't clear _selectedRoute — user is viewing the route
+      // Don't set _selectedStop — that opens the detail view
+    });
+
+    // Center the map on the stop
+    final allStops = ref.read(stopsProvider);
+    allStops.whenData((stops) {
+      for (final s in stops) {
+        if (s.name == stopCode) {
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLng(LatLng(s.latitude, s.longitude)),
+          );
+          break;
+        }
       }
     });
   }
@@ -330,6 +392,16 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return _tileSize * (0.5 + lng / 360);
   }
 
+  /// Calculate meters per pixel at the given camera position.
+  /// Used for scaling the accuracy circle.
+  static double _calculateMetersPerPixel(CameraPosition camera) {
+    // At the equator, each zoom level halves the meters per pixel
+    // meters per pixel = (Earth circumference / 256) / 2^zoom * cos(lat)
+    const earthCircumference = 40075016.686; // meters
+    final latRad = camera.target.latitude * math.pi / 180;
+    return (earthCircumference / 256) / math.pow(2, camera.zoom) * math.cos(latRad);
+  }
+
   /// Synchronously convert lat/lng to screen coordinates using Mercator projection
   Offset _latLngToScreen(LatLng point, CameraPosition camera, Size mapSize) {
     final scale = math.pow(2, camera.zoom).toDouble();
@@ -358,15 +430,17 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return Offset(screenX, screenY);
   }
 
-  /// Called when camera moves — update stored position and recalculate bus screen positions
+  /// Called when camera moves — update stored position and recalculate overlay positions
   void _onCameraMove(CameraPosition position) {
     _currentCameraPosition = position;
     _updateBusScreenPositions(animate: false);
+    _updateLocationScreenPosition();
   }
 
   /// Called when camera stops moving — final position update
   void _onCameraIdle() {
     _updateBusScreenPositions(animate: false);
+    _updateLocationScreenPosition();
   }
 
   /// Synchronously update screen coordinates for all visible buses
@@ -867,7 +941,15 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               anchor: const Offset(0.5, 0.5),
               zIndexInt: 1,
               consumeTapEvents: true,
-              onTap: () => _selectStop(stop.name, fromMap: true),
+              onTap: () {
+                // When a route is selected, highlight the stop without
+                // exiting the route view or opening stop detail
+                if (_selectedRoute != null) {
+                  _highlightStopInRoute(stop.name);
+                } else {
+                  _selectStop(stop.name, fromMap: true);
+                }
+              },
             ),
           );
         }
@@ -1064,6 +1146,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _highlightFlashTimer?.cancel();
+    _positionStreamSubscription?.cancel();
     _tabController.dispose();
     _routeAnimController?.dispose();
     _mapController?.dispose();
@@ -1092,6 +1175,16 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     // Watch navigation state to react to destination/route selection
     final navState = ref.watch(navigationStateProvider);
     final hasDestination = navState.destination != null;
+
+    // Listen for pending stop selection from Saved tab (or other screens)
+    ref.listen<String?>(pendingStopSelectionProvider, (previous, next) {
+      if (next != null) {
+        // Clear the pending selection immediately
+        ref.read(pendingStopSelectionProvider.notifier).state = null;
+        // Select the stop (this centers map and shows detail view)
+        _selectStop(next);
+      }
+    });
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -1139,7 +1232,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                   onCameraMove: _onCameraMove,
                   onCameraIdle: _onCameraIdle,
                   onTap: (_) => _clearAll(),
-                  myLocationEnabled: true,
+                  myLocationEnabled: false, // Using custom LocationOverlayMarker
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
@@ -1194,6 +1287,19 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               }
             },
           ),
+
+          // Custom location marker with compass heading (below bus markers)
+          if (_locationScreenPosition != null)
+            LocationOverlayMarker(
+              key: const ValueKey('location_overlay'),
+              screenX: _locationScreenPosition!.dx,
+              screenY: _locationScreenPosition!.dy,
+              accuracy: _streamPosition?.accuracy,
+              metersPerPixel: _currentCameraPosition != null
+                  ? _calculateMetersPerPixel(_currentCameraPosition!)
+                  : null,
+              shouldAnimate: false, // Snap position during camera moves
+            ),
 
           // Highlighted stop overlay (appears above bus markers) — hide when route is selected
           if (navState.route == null && _buildHighlightedStopOverlay() != null)
@@ -1496,6 +1602,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                   userLng: lng,
                   selectedRoute: _selectedRoute,
                   selectedBusPlate: _selectedBusPlate,
+                  highlightedStopCode: _highlightedStop,
                   shouldScrollToSelection: _scrollToSelection,
                   onRouteSelected: (route) => _selectRoute(route),
                   onCenterMap: (stopLat, stopLng, stopCode) {
@@ -1514,7 +1621,13 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                       (b) => b!.vehPlate == plate,
                       orElse: () => null,
                     );
-                    if (bus != null) _selectBus(route, bus);
+                    if (bus == null) return;
+                    // In Lines detail: deselecting a bus keeps the route polyline
+                    if (_selectedBusPlate == plate) {
+                      setState(() => _selectedBusPlate = null);
+                    } else {
+                      _selectBus(route, bus);
+                    }
                   },
                 ),
               ],

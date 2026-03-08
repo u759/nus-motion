@@ -49,7 +49,7 @@ class BusControllerTest {
     @Test
     void getAnnouncementsReturnsAnnouncementList() throws Exception {
         when(nusApiService.getAnnouncements())
-                .thenReturn(List.of(new Announcement("100", "Test alert", "Active", "High", "A1,D1")));
+                .thenReturn(List.of(new Announcement("100", "Test alert", "Active", "High", "A1,D1", null, null)));
 
         mockMvc.perform(get("/api/announcements"))
                 .andExpect(status().isOk())

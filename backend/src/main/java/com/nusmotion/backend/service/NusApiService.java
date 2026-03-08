@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -180,6 +181,7 @@ public class NusApiService {
 
     /**
      * Fetch ticker tapes (alerts with optional geolocation).
+     * Filters to only return currently-active tapes based on Display_From/Display_To.
      */
     @Cacheable("tickerTapes")
     public List<TickerTape> getTickerTapes() {
@@ -188,11 +190,31 @@ public class NusApiService {
                 .uri("/TickerTapes")
                 .retrieve()
                 .body(TickerTapesResponse.class);
-        return response != null
-                && response.tickerTapesResult() != null
-                && response.tickerTapesResult().tickerTapes() != null
-                ? response.tickerTapesResult().tickerTapes()
-                : List.of();
+        
+        if (response == null || response.tickerTapesResult() == null 
+                || response.tickerTapesResult().tickerTapes() == null) {
+            return List.of();
+        }
+        
+        OffsetDateTime now = OffsetDateTime.now();
+        return response.tickerTapesResult().tickerTapes().stream()
+                .filter(tape -> isCurrentlyActive(tape, now))
+                .toList();
+    }
+    
+    /**
+     * Check if a ticker tape is currently active based on its display dates.
+     * A tape is active if: (displayFrom is null OR now >= displayFrom) 
+     *                  AND (displayTo is null OR now <= displayTo)
+     */
+    private boolean isCurrentlyActive(TickerTape tape, OffsetDateTime now) {
+        if (tape.displayFrom() != null && now.isBefore(tape.displayFrom())) {
+            return false;
+        }
+        if (tape.displayTo() != null && now.isAfter(tape.displayTo())) {
+            return false;
+        }
+        return true;
     }
 
     /**

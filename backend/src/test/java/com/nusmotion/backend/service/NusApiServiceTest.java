@@ -83,7 +83,7 @@ class NusApiServiceTest {
     @Test
     void getAnnouncementsReturnsDataWhenResponsePresent() {
         AnnouncementsResponse response = new AnnouncementsResponse(
-                new AnnouncementsResult(List.of(new Announcement("1", "msg", "Active", "High", "A1"))));
+                new AnnouncementsResult(List.of(new Announcement("1", "msg", "Active", "High", "A1", null, null))));
 
         when(nusApiClient.get()
                 .uri("/Announcements")
