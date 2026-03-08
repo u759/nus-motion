@@ -6,12 +6,16 @@ class TickerTape {
   final String message;
   final String priority;
   final String status;
+
   /// Validity start time (from backend "displayFrom").
   final DateTime? displayFrom;
+
   /// Validity end time (from backend "displayTo").
   final DateTime? displayTo;
+
   /// When this ticker was created (from backend "createdOn").
   final DateTime? createdOn;
+
   /// Who created this ticker (from backend "createdBy").
   final String? createdBy;
 

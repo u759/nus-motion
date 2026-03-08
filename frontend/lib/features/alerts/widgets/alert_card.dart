@@ -138,8 +138,10 @@ class _AlertCardState extends State<AlertCard>
                     Row(
                       children: [
                         RotationTransition(
-                          turns: Tween(begin: 0.0, end: 0.5)
-                              .animate(_iconController),
+                          turns: Tween(
+                            begin: 0.0,
+                            end: 0.5,
+                          ).animate(_iconController),
                           child: Icon(
                             Icons.expand_more,
                             size: 18,
@@ -171,10 +173,7 @@ class _AlertCardState extends State<AlertCard>
     final spans = _parseHtmlLinks(text);
     return Text.rich(
       TextSpan(children: spans),
-      style: const TextStyle(
-        fontSize: 13,
-        color: AppColors.textSecondary,
-      ),
+      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
       maxLines: maxLines,
       overflow: maxLines != null ? TextOverflow.ellipsis : TextOverflow.clip,
     );
@@ -244,7 +243,20 @@ class _AlertCardState extends State<AlertCard>
   }
 
   String _monthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return months[month - 1];
   }
 

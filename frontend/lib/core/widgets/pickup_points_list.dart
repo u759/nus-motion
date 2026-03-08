@@ -91,13 +91,17 @@ class _PickupPointsListState extends State<PickupPointsList> {
           isFirst: i == 0,
           isLast: i == sorted.length - 1,
           isHighlighted: sorted[i].busstopcode == widget.selectedStopCode,
-          onTap: widget.onStopTapped != null ? () => widget.onStopTapped!(sorted[i]) : null,
+          onTap: widget.onStopTapped != null
+              ? () => widget.onStopTapped!(sorted[i])
+              : null,
         ),
     ];
 
     // Check if we need any markers
     final hasActiveBuses =
-        widget.activeBuses != null && widget.activeBuses!.isNotEmpty && sorted.length >= 2;
+        widget.activeBuses != null &&
+        widget.activeBuses!.isNotEmpty &&
+        sorted.length >= 2;
     final showUserMarker =
         widget.userLat != null && widget.userLng != null && sorted.length >= 2;
 
@@ -128,7 +132,11 @@ class _PickupPointsListState extends State<PickupPointsList> {
         // User position marker
         if (showUserMarker)
           _TimelineUserMarker(
-            progress: _calculateUserProgress(widget.userLat!, widget.userLng!, sorted),
+            progress: _calculateUserProgress(
+              widget.userLat!,
+              widget.userLng!,
+              sorted,
+            ),
             totalHeight: totalHeight,
           ),
       ],

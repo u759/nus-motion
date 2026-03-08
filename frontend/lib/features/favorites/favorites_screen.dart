@@ -223,7 +223,10 @@ class _FavoriteStopCard extends ConsumerWidget {
                   if (result.shuttles.isEmpty) {
                     return const Text(
                       'No services',
-                      style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
                     );
                   }
                   return Wrap(

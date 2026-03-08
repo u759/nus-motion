@@ -175,32 +175,24 @@ class _AlertsList extends StatelessWidget {
             var filtered = items;
             if (filter == 'service') {
               // Service updates: delays, suspensions, disruptions
-              filtered = items
-                  .where(
-                    (a) {
-                      final t = a.text.toLowerCase();
-                      return t.contains('delay') ||
-                          t.contains('suspend') ||
-                          t.contains('service') ||
-                          t.contains('disruption') ||
-                          t.contains('cancelled');
-                    },
-                  )
-                  .toList();
+              filtered = items.where((a) {
+                final t = a.text.toLowerCase();
+                return t.contains('delay') ||
+                    t.contains('suspend') ||
+                    t.contains('service') ||
+                    t.contains('disruption') ||
+                    t.contains('cancelled');
+              }).toList();
             } else if (filter == 'maintenance') {
               // Maintenance: construction, road works, scheduled works
-              filtered = items
-                  .where(
-                    (a) {
-                      final t = a.text.toLowerCase();
-                      return t.contains('maintenance') ||
-                          t.contains('road') ||
-                          t.contains('construction') ||
-                          t.contains('repair') ||
-                          t.contains('upgrade');
-                    },
-                  )
-                  .toList();
+              filtered = items.where((a) {
+                final t = a.text.toLowerCase();
+                return t.contains('maintenance') ||
+                    t.contains('road') ||
+                    t.contains('construction') ||
+                    t.contains('repair') ||
+                    t.contains('upgrade');
+              }).toList();
             }
 
             final current = filtered
@@ -281,7 +273,10 @@ class _AlertsList extends StatelessWidget {
                       index: e.key + current.length,
                       child: Opacity(
                         opacity: 0.6,
-                        child: AlertCard(announcement: e.value, isResolved: true),
+                        child: AlertCard(
+                          announcement: e.value,
+                          isResolved: true,
+                        ),
                       ),
                     ),
                   ),
@@ -311,9 +306,7 @@ class _AlertsList extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                ...tapes.map(
-                  (t) => _TickerCard(key: ValueKey(t.id), tape: t),
-                ),
+                ...tapes.map((t) => _TickerCard(key: ValueKey(t.id), tape: t)),
               ],
             );
           },

@@ -141,16 +141,17 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       );
 
       // Subscribe to position stream for real-time location updates
-      _positionStreamSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5, // Update every 5 meters
-        ),
-      ).listen((position) {
-        if (!mounted) return;
-        setState(() => _streamPosition = position);
-        _updateLocationScreenPosition();
-      });
+      _positionStreamSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 5, // Update every 5 meters
+            ),
+          ).listen((position) {
+            if (!mounted) return;
+            setState(() => _streamPosition = position);
+            _updateLocationScreenPosition();
+          });
     } catch (_) {
       // Location unavailable
     }
@@ -162,7 +163,10 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     final camera = _currentCameraPosition;
     final mapSize = _lastMapSize;
     final position = _streamPosition;
-    if (camera == null || mapSize == null || mapSize.isEmpty || position == null) {
+    if (camera == null ||
+        mapSize == null ||
+        mapSize.isEmpty ||
+        position == null) {
       return;
     }
 
@@ -399,7 +403,9 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     // meters per pixel = (Earth circumference / 256) / 2^zoom * cos(lat)
     const earthCircumference = 40075016.686; // meters
     final latRad = camera.target.latitude * math.pi / 180;
-    return (earthCircumference / 256) / math.pow(2, camera.zoom) * math.cos(latRad);
+    return (earthCircumference / 256) /
+        math.pow(2, camera.zoom) *
+        math.cos(latRad);
   }
 
   /// Synchronously convert lat/lng to screen coordinates using Mercator projection
@@ -1232,7 +1238,8 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                   onCameraMove: _onCameraMove,
                   onCameraIdle: _onCameraIdle,
                   onTap: (_) => _clearAll(),
-                  myLocationEnabled: false, // Using custom LocationOverlayMarker
+                  myLocationEnabled:
+                      false, // Using custom LocationOverlayMarker
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,

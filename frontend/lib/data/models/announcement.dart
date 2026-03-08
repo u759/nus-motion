@@ -4,8 +4,10 @@ class Announcement {
   final String status;
   final String priority;
   final String affectedServiceIds;
+
   /// Timestamp when the alert was created (from backend "createdOn").
   final DateTime? createdOn;
+
   /// Who created the alert (from backend "createdBy").
   final String? createdBy;
 

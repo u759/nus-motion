@@ -52,13 +52,13 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
   double _heading = 0.0;
   double _targetHeading = 0.0;
   bool _hasCompass = false;
-  
+
   /// Smoothed heading using low-pass filter to prevent jitter.
   double _smoothedHeading = 0.0;
-  
+
   /// Low-pass filter smoothing factor. Lower = smoother but slower response.
   static const double _smoothingAlpha = 0.15;
-  
+
   /// Track if we've received at least one valid heading.
   bool _hasValidHeading = false;
 
@@ -88,13 +88,13 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
 
     _compassSubscription = compassStream.listen((event) {
       if (!mounted) return;
-      
+
       final rawHeading = event.heading;
-      
+
       // CRITICAL: When heading is null, keep the last known heading.
       // Don't reset to 0/north — this causes the fluctuation bug.
       if (rawHeading == null) return;
-      
+
       // Apply low-pass filter to smooth heading changes
       final smoothed = _applyLowPassFilter(rawHeading);
       _animateHeadingTo(smoothed);
@@ -104,7 +104,7 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
       setState(() => _hasCompass = true);
     }
   }
-  
+
   /// Applies low-pass filter to smooth heading, handling 360°/0° crossover.
   double _applyLowPassFilter(double newHeading) {
     if (!_hasValidHeading) {
@@ -113,19 +113,19 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
       _hasValidHeading = true;
       return newHeading;
     }
-    
+
     // Calculate delta, handling 360°/0° wrap-around
     double delta = newHeading - _smoothedHeading;
     if (delta > 180) delta -= 360;
     if (delta < -180) delta += 360;
-    
+
     // Apply low-pass filter
     _smoothedHeading += delta * _smoothingAlpha;
-    
+
     // Normalize to 0-360
     if (_smoothedHeading < 0) _smoothedHeading += 360;
     if (_smoothedHeading >= 360) _smoothedHeading -= 360;
-    
+
     return _smoothedHeading;
   }
 
@@ -137,12 +137,13 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
 
     _targetHeading = _heading + diff;
 
-    _headingAnimation = Tween<double>(
-      begin: _heading,
-      end: _targetHeading,
-    ).animate(
-      CurvedAnimation(parent: _headingAnimController, curve: Curves.easeOut),
-    );
+    _headingAnimation = Tween<double>(begin: _heading, end: _targetHeading)
+        .animate(
+          CurvedAnimation(
+            parent: _headingAnimController,
+            curve: Curves.easeOut,
+          ),
+        );
 
     _headingAnimController.forward(from: 0).then((_) {
       if (mounted) {
@@ -170,14 +171,17 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
 
     // Calculate accuracy circle radius in pixels
     double? accuracyRadius;
-    if (widget.accuracy != null && widget.metersPerPixel != null && widget.metersPerPixel! > 0) {
+    if (widget.accuracy != null &&
+        widget.metersPerPixel != null &&
+        widget.metersPerPixel! > 0) {
       accuracyRadius = widget.accuracy! / widget.metersPerPixel!;
       // Clamp to reasonable range
       accuracyRadius = accuracyRadius.clamp(size / 2, 200.0);
     }
 
-    final animDuration =
-        widget.shouldAnimate ? LocationOverlayMarker._posAnimDuration : Duration.zero;
+    final animDuration = widget.shouldAnimate
+        ? LocationOverlayMarker._posAnimDuration
+        : Duration.zero;
 
     return AnimatedPositioned(
       duration: animDuration,
@@ -210,10 +214,7 @@ class _LocationOverlayMarkerState extends State<LocationOverlayMarker>
 }
 
 class _LocationMarkerPainter extends CustomPainter {
-  _LocationMarkerPainter({
-    this.heading,
-    this.accuracyRadius,
-  });
+  _LocationMarkerPainter({this.heading, this.accuracyRadius});
 
   /// Compass heading in degrees (0-360, 0 = North). Null if compass unavailable.
   final double? heading;
@@ -224,7 +225,8 @@ class _LocationMarkerPainter extends CustomPainter {
   // Design constants — reduced by ~17% for smaller marker
   static const double _dotRadius = 8.0;
   static const double _borderWidth = 2.5;
-  static const double _coneRadius = 22.0; // How far the cone extends from center
+  static const double _coneRadius =
+      22.0; // How far the cone extends from center
   static const double _coneAngle = 65.0; // degrees (60-70 as per spec)
 
   // Google Maps location blue
@@ -288,7 +290,12 @@ class _LocationMarkerPainter extends CustomPainter {
   }
 
   /// Paints a Google Maps-style translucent heading cone with radial gradient.
-  void _paintHeadingCone(Canvas canvas, Offset center, Size size, double heading) {
+  void _paintHeadingCone(
+    Canvas canvas,
+    Offset center,
+    Size size,
+    double heading,
+  ) {
     // Convert heading to radians (0 = North = up on screen)
     // Canvas Y is inverted, so north (-90°) points up
     final headingRad = (heading - 90) * math.pi / 180;
@@ -316,9 +323,7 @@ class _LocationMarkerPainter extends CustomPainter {
           _locationBlue.withValues(alpha: 0.0),
         ],
         stops: const [0.0, 0.5, 1.0],
-      ).createShader(
-        Rect.fromCircle(center: center, radius: _coneRadius),
-      );
+      ).createShader(Rect.fromCircle(center: center, radius: _coneRadius));
 
     canvas.drawPath(path, gradientPaint);
   }
