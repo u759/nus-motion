@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
+import 'package:frontend/core/widgets/error_card.dart';
 import 'package:frontend/core/widgets/pickup_points_list.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/core/widgets/selectable_card.dart';
@@ -147,13 +148,11 @@ class _LinesTabState extends ConsumerState<LinesTab> {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (e, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text(
-            'Failed to load lines',
-            style: const TextStyle(color: AppColors.textMuted),
-          ),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: ErrorCard(
+          message: 'Failed to load bus lines',
+          onRetry: () => ref.invalidate(serviceDescriptionsProvider),
         ),
       ),
     );
@@ -255,12 +254,13 @@ class _LineDetailView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.nusColors;
     final routeColor = RouteBadge.colorForRoute(desc.route);
     final allBuses = ref.watch(allActiveBusesProvider);
     final pickupPoints = ref.watch(pickupPointsProvider(desc.route));
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
         // Header
         Padding(
@@ -270,12 +270,12 @@ class _LineDetailView extends ConsumerWidget {
               GestureDetector(
                 onTap: onBack,
                 behavior: HitTestBehavior.opaque,
-                child: const Padding(
-                  padding: EdgeInsets.all(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
                   child: Icon(
                     Icons.arrow_back_ios_new,
                     size: 18,
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                   ),
                 ),
               ),
@@ -294,14 +294,15 @@ class _LineDetailView extends ConsumerWidget {
             ],
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Divider(height: 1, color: AppColors.borderLight),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Divider(height: 1, color: colors.borderLight),
         ),
         // Content
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Active buses section
               _SectionHeader(
@@ -316,12 +317,9 @@ class _LineDetailView extends ConsumerWidget {
                   final buses = busMap[desc.route] ?? [];
                   if (buses.isEmpty) {
                     return _InfoCard(
-                      child: const Text(
+                      child: Text(
                         'No buses currently in service',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textMuted,
-                        ),
+                        style: TextStyle(fontSize: 13, color: colors.textMuted),
                       ),
                     );
                   }
@@ -357,10 +355,10 @@ class _LineDetailView extends ConsumerWidget {
                     ),
                   ),
                 ),
-                error: (_, __) => const _InfoCard(
+                error: (_, __) => _InfoCard(
                   child: Text(
                     'Failed to load buses',
-                    style: TextStyle(fontSize: 13, color: AppColors.error),
+                    style: TextStyle(fontSize: 13, color: colors.error),
                   ),
                 ),
               ),
@@ -377,12 +375,9 @@ class _LineDetailView extends ConsumerWidget {
                 data: (points) {
                   if (points.isEmpty) {
                     return _InfoCard(
-                      child: const Text(
+                      child: Text(
                         'No stop information available',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textMuted,
-                        ),
+                        style: TextStyle(fontSize: 13, color: colors.textMuted),
                       ),
                     );
                   }
@@ -410,11 +405,16 @@ class _LineDetailView extends ConsumerWidget {
                     ),
                   ),
                 ),
-                error: (_, __) => const _InfoCard(
-                  child: Text(
-                    'Failed to load stops',
-                    style: TextStyle(fontSize: 13, color: AppColors.error),
-                  ),
+                error: (_, __) => Builder(
+                  builder: (context) {
+                    final colors = context.nusColors;
+                    return _InfoCard(
+                      child: Text(
+                        'Failed to load stops',
+                        style: TextStyle(fontSize: 13, color: colors.error),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -467,13 +467,14 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
+        border: Border.all(color: colors.borderLight),
       ),
       child: child,
     );
@@ -505,6 +506,7 @@ class _ActiveBusRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return SelectableCard(
       isSelected: isSelected,
       accentColor: routeColor,
@@ -527,19 +529,16 @@ class _ActiveBusRow extends StatelessWidget {
               children: [
                 Text(
                   plate,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: colors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '$speed km/h',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
+                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
                 ),
               ],
             ),
@@ -550,7 +549,7 @@ class _ActiveBusRow extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: _crowdColor(crowdLevel!).withValues(alpha: 0.1),
+                color: _crowdColor(context, crowdLevel!).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -558,7 +557,7 @@ class _ActiveBusRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: _crowdColor(crowdLevel!),
+                  color: _crowdColor(context, crowdLevel!),
                 ),
               ),
             ),
@@ -567,16 +566,17 @@ class _ActiveBusRow extends StatelessWidget {
     );
   }
 
-  static Color _crowdColor(String level) {
+  static Color _crowdColor(BuildContext context, String level) {
+    final colors = context.nusColors;
     switch (level.toLowerCase()) {
       case 'low':
-        return AppColors.success;
+        return colors.success;
       case 'medium':
         return const Color(0xFFEAB308);
       case 'high':
-        return AppColors.error;
+        return colors.error;
       default:
-        return AppColors.textMuted;
+        return colors.textMuted;
     }
   }
 }
@@ -591,6 +591,7 @@ class _CapacityBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final occupancy = capacity > 0 ? ridership / capacity : 0.0;
     final color = _getLoadColor(occupancy);
     final percentage = (occupancy * 100).round();
@@ -623,7 +624,7 @@ class _CapacityBar extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             '$percentage% full', // Percentage instead of fraction
-            style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+            style: TextStyle(fontSize: 10, color: colors.textMuted),
           ),
         ],
       ),
@@ -664,6 +665,7 @@ class _LineItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.nusColors;
     final allBuses = ref.watch(allActiveBusesProvider);
     final routeColor = RouteBadge.colorForRoute(desc.route);
 
@@ -697,9 +699,9 @@ class _LineItem extends ConsumerWidget {
             data: (busMap) {
               final buses = busMap[desc.route] ?? [];
               if (buses.isEmpty) {
-                return const Text(
+                return Text(
                   'No buses',
-                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  style: TextStyle(fontSize: 11, color: colors.textMuted),
                 );
               }
               return AnimatedSwitcherDefaults(
@@ -710,15 +712,15 @@ class _LineItem extends ConsumerWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.successBg,
+                    color: colors.successBg,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '${buses.length}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.success,
+                      color: colors.success,
                     ),
                   ),
                 ),
@@ -735,7 +737,7 @@ class _LineItem extends ConsumerWidget {
           Icon(
             isSelected ? Icons.map : Icons.chevron_right,
             size: 18,
-            color: isSelected ? routeColor : AppColors.textMuted,
+            color: isSelected ? routeColor : colors.textMuted,
           ),
         ],
       ),
@@ -758,6 +760,7 @@ class _RoutePathText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final segments = text
         .split('>')
         .map((s) => s.trim())
@@ -774,7 +777,7 @@ class _RoutePathText extends StatelessWidget {
               style: TextStyle(
                 fontSize: fontSize,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
               ),
             ),
             if (i < segments.length - 1)

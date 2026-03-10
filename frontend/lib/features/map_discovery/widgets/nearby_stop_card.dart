@@ -29,14 +29,15 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final shuttles = ref.watch(shuttlesProvider(widget.stop.stopName));
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.border, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,7 +45,7 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
           // Tappable header
           InkWell(
             onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -52,12 +53,12 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.infoBg,
+                      color: colors.infoBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.directions_bus,
-                      color: AppColors.primary,
+                      color: colors.primary,
                       size: 20,
                     ),
                   ),
@@ -68,18 +69,18 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                       children: [
                         Text(
                           widget.stop.stopDisplayName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: colors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${DistanceFormatter.format(widget.stop.distanceMeters)} • ${widget.stop.walkingMinutes} min walk',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: AppColors.textSecondary,
+                            color: colors.textSecondary,
                           ),
                         ),
                       ],
@@ -96,8 +97,8 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                           ref
                               .watch(favoriteStopsProvider.notifier)
                               .isFavorite(widget.stop.stopName)
-                          ? AppColors.primary
-                          : AppColors.textMuted,
+                          ? colors.primary
+                          : colors.textMuted,
                       size: 22,
                     ),
                     onPressed: () => ref
@@ -107,9 +108,9 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(
+                    child: Icon(
                       Icons.expand_more,
-                      color: AppColors.textMuted,
+                      color: colors.textMuted,
                       size: 22,
                     ),
                   ),
@@ -123,14 +124,11 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
             secondChild: shuttles.when(
               data: (result) {
                 if (result.shuttles.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: Text(
                       'No services at this time',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textMuted,
-                      ),
+                      style: TextStyle(fontSize: 13, color: colors.textMuted),
                     ),
                   );
                 }
@@ -138,7 +136,7 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Column(
                     children: [
-                      const Divider(height: 1, color: AppColors.borderLight),
+                      Divider(height: 1, color: colors.borderLight),
                       const SizedBox(height: 8),
                       ...result.shuttles
                           .take(6)
@@ -162,11 +160,11 @@ class _NearbyStopCardState extends ConsumerState<NearbyStopCard> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
-              error: (_, __) => const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+              error: (_, __) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Text(
                   'Failed to load arrivals',
-                  style: TextStyle(fontSize: 13, color: AppColors.error),
+                  style: TextStyle(fontSize: 13, color: colors.error),
                 ),
               ),
             ),
@@ -195,6 +193,7 @@ class _ShuttleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final eta = EtaFormatter.format(shuttle.arrivalTime);
     final nextEta = EtaFormatter.format(shuttle.nextArrivalTime);
     final routeColor = RouteBadge.colorForRoute(shuttle.name);
@@ -216,7 +215,7 @@ class _ShuttleButton extends StatelessWidget {
               border: Border.all(
                 color: isSelected
                     ? routeColor.withValues(alpha: 0.3)
-                    : AppColors.borderLight,
+                    : colors.borderLight,
               ),
             ),
             child: Row(
@@ -228,35 +227,27 @@ class _ShuttleButton extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: eta == 'Arriving'
-                        ? AppColors.success
-                        : AppColors.primary,
+                    color: eta == 'Arriving' ? colors.success : colors.primary,
                   ),
                 ),
                 if (nextEta != 'N/A') ...[
                   const SizedBox(width: 6),
                   Text(
                     '• $nextEta',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
+                    style: TextStyle(fontSize: 13, color: colors.textSecondary),
                   ),
                 ],
                 const Spacer(),
                 if (shuttle.towards != null)
                   Text(
                     shuttle.towards!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
+                    style: TextStyle(fontSize: 12, color: colors.textSecondary),
                   ),
                 const SizedBox(width: 8),
                 Icon(
                   isSelected ? Icons.map : Icons.chevron_right,
                   size: 18,
-                  color: isSelected ? routeColor : AppColors.textMuted,
+                  color: isSelected ? routeColor : colors.textMuted,
                 ),
               ],
             ),

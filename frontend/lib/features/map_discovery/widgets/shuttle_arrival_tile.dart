@@ -12,6 +12,7 @@ class ShuttleArrivalTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final eta = EtaFormatter.format(shuttle.arrivalTime);
     final nextEta = EtaFormatter.format(shuttle.nextArrivalTime);
 
@@ -29,19 +30,14 @@ class ShuttleArrivalTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: eta == 'Arriving'
-                        ? AppColors.success
-                        : AppColors.primary,
+                    color: eta == 'Arriving' ? colors.success : colors.primary,
                   ),
                 ),
                 if (nextEta != 'N/A') ...[
                   const SizedBox(width: 6),
                   Text(
                     '• $nextEta',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
+                    style: TextStyle(fontSize: 13, color: colors.textSecondary),
                   ),
                 ],
               ],
@@ -50,10 +46,7 @@ class ShuttleArrivalTile extends StatelessWidget {
           if (shuttle.towards != null)
             Text(
               shuttle.towards!,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: colors.textSecondary),
             ),
           if (shuttle.towards != null) const SizedBox(width: 8),
           CapacityIndicator(passengers: shuttle.passengers),

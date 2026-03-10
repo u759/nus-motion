@@ -8,6 +8,7 @@ import 'package:frontend/core/widgets/loading_shimmer.dart';
 import 'package:frontend/core/widgets/error_card.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/data/models/building.dart';
+import 'package:frontend/data/models/route_leg.dart';
 import 'package:frontend/data/models/route_plan_result.dart';
 import 'package:frontend/state/providers.dart';
 import 'package:frontend/features/map_discovery/models/navigation_state.dart';
@@ -58,6 +59,8 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
+
     // Build route query params
     final from = widget.userPosition != null
         ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
@@ -78,20 +81,20 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Suggested Routes',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: colors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'To ${widget.destination.name}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.textSecondary,
+                        color: colors.textSecondary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -104,7 +107,7 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
                 onPressed: () =>
                     ref.invalidate(routeProvider((from: from, to: to))),
                 icon: const Icon(Icons.refresh, size: 20),
-                color: AppColors.textMuted,
+                color: colors.textMuted,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
@@ -120,7 +123,7 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
               // Filter out routes with inactive bus legs
               final validRoutes = _filterActiveRoutes(routes, ref);
               if (validRoutes.isEmpty) {
-                return _buildEmptyState();
+                return _buildEmptyState(colors);
               }
               return _buildRoutesList(context, ref, validRoutes);
             },
@@ -183,7 +186,7 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(NusColorsData colors) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -194,28 +197,28 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(16),
+                color: colors.surfaceMuted,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.route_outlined,
                 size: 32,
-                color: AppColors.textMuted,
+                color: colors.textMuted,
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No routes found',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Try a different destination or walk directly',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: colors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ],
@@ -258,7 +261,7 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
   }
 }
 
-/// Individual route option card.
+/// Individual route option card with a visual journey strip.
 class _RouteCard extends ConsumerWidget {
   final RoutePlanResult route;
   final bool isFastest;
@@ -272,6 +275,8 @@ class _RouteCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.nusColors;
+
     // Resolve first bus leg for live arrival lookup
     final firstBusLeg = route.legs.where((l) => l.isBus).firstOrNull;
     String? stopCode;
@@ -303,18 +308,30 @@ class _RouteCard extends ConsumerWidget {
         }
       });
     }
+
+    // Capture for null promotion inside builder
+    final eta = liveEta;
+
     return PressableScale(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isFastest
-              ? AppColors.primary.withValues(alpha: 0.08)
-              : AppColors.surfaceMuted,
-          borderRadius: BorderRadius.circular(16),
+          gradient: isFastest
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    colors.primary.withValues(alpha: 0.06),
+                    colors.primary.withValues(alpha: 0.02),
+                  ],
+                )
+              : null,
+          color: isFastest ? null : colors.surfaceMuted,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isFastest ? AppColors.primary : AppColors.border,
-            width: isFastest ? 2 : 1,
+            color: isFastest ? colors.primary : colors.border,
+            width: isFastest ? 2 : 0.5,
           ),
           boxShadow: [
             BoxShadow(
@@ -327,99 +344,76 @@ class _RouteCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: time + route badges + transfers
+            // Row 1: Total time + Fastest pill + Live ETA
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Time and label
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '${route.totalMinutes}',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                            height: 1,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'min',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (isFastest)
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'FASTEST',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+                    Text(
+                      '${route.totalMinutes}',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: colors.textPrimary,
+                        height: 1,
                       ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'min',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
-
-                // Divider
-                Container(
-                  width: 1,
-                  height: 40,
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  color: AppColors.border,
-                ),
-
-                // Route badges
-                Expanded(child: _buildRouteBadges()),
-
-                // Transfers
-                if (route.transfers > 0)
+                if (isFastest) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Fastest',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (eta != null && eta != '-')
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceMuted,
+                      color: colors.success.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.swap_horiz,
-                          size: 14,
-                          color: AppColors.textSecondary,
-                        ),
+                        _PulsingDot(color: colors.success),
                         const SizedBox(width: 4),
                         Text(
-                          '${route.transfers}',
-                          style: const TextStyle(
-                            fontSize: 12,
+                          eta.toLowerCase() == 'arr' ? 'Arriving' : '$eta min',
+                          style: TextStyle(
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
+                            color: colors.success,
                           ),
                         ),
                       ],
@@ -430,134 +424,157 @@ class _RouteCard extends ConsumerWidget {
 
             const SizedBox(height: 12),
 
-            // Time breakdown
-            _buildTimeBreakdown(liveEta: liveEta),
+            // Row 2: Journey strip
+            _buildJourneyStrip(colors),
+
+            const SizedBox(height: 10),
+
+            // Row 3: De-emphasized time breakdown footer
+            _buildFooter(colors),
           ],
         ),
       ),
     );
   }
 
-  /// Builds route badges showing each bus leg.
-  Widget _buildRouteBadges() {
-    final busLegs = route.legs.where((leg) => leg.isBus).toList();
+  /// Horizontal journey strip with proportional segments for each leg.
+  Widget _buildJourneyStrip(NusColorsData colors) {
+    final displayLegs = route.legs
+        .where((l) => (l.isWalk || l.isBus) && (l.minutes ?? 0) > 0)
+        .toList();
 
-    if (busLegs.isEmpty) {
-      // Walking only
-      return Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.textMuted,
-              borderRadius: BorderRadius.circular(6),
+    if (displayLegs.isEmpty) {
+      final isDark = colors.background.computeLuminance() < 0.2;
+      return Container(
+        height: 28,
+        decoration: BoxDecoration(
+          color: colors.textMuted.withValues(alpha: isDark ? 0.25 : 0.18),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.directions_walk, size: 13, color: colors.textMuted),
+            const SizedBox(width: 4),
+            Text(
+              'Walk only',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: colors.textMuted,
+              ),
             ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.directions_walk, size: 12, color: Colors.white),
-                SizedBox(width: 4),
-                Text(
-                  'Walk',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        for (int i = 0; i < busLegs.length; i++) ...[
-          if (i > 0)
-            const Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: AppColors.textMuted,
-            ),
-          RouteBadge(routeCode: busLegs[i].routeCode ?? '?', fontSize: 10),
-        ],
-      ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: [
+            for (int i = 0; i < displayLegs.length; i++)
+              Expanded(
+                flex: (displayLegs[i].minutes ?? 1).clamp(1, 999),
+                child: _buildSegment(displayLegs[i], colors),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
-  /// Builds the time breakdown row (walk, wait, bus) with optional live ETA chip.
-  Widget _buildTimeBreakdown({String? liveEta}) {
-    return Row(
-      children: [
-        _buildTimeChip(
-          icon: Icons.directions_walk,
-          label: '${route.walkingMinutes} min walk',
-          color: AppColors.textSecondary,
-        ),
-        const SizedBox(width: 12),
-        _buildTimeChip(
-          icon: Icons.schedule,
-          label: '${route.waitingMinutes} min wait',
-          color: AppColors.warning,
-        ),
-        const SizedBox(width: 12),
-        _buildTimeChip(
-          icon: Icons.directions_bus,
-          label: '${route.busMinutes} min ride',
-          color: AppColors.primary,
-        ),
-        if (liveEta != null && liveEta != '-') ...[
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const _PulsingDot(color: AppColors.success),
-                const SizedBox(width: 4),
-                Text(
-                  liveEta.toLowerCase() == 'arr' ? 'Arriving' : '$liveEta min',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.success,
-                  ),
+  Widget _buildSegment(RouteLeg leg, NusColorsData colors) {
+    if (leg.isBus) {
+      final routeColor = RouteBadge.colorForRoute(leg.routeCode ?? '');
+      return Container(
+        color: routeColor.withValues(alpha: 0.85),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.directions_bus, size: 11, color: Colors.white),
+            const SizedBox(width: 2),
+            Flexible(
+              child: Text(
+                leg.routeCode ?? '',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
-              ],
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-        ],
-      ],
+          ],
+        ),
+      );
+    }
+
+    // Walk segment — darker in light mode, lighter in dark mode for visibility
+    final isDark = colors.background.computeLuminance() < 0.2;
+    return Container(
+      color: colors.textMuted.withValues(alpha: isDark ? 0.25 : 0.18),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.directions_walk,
+        size: 13,
+        color: colors.textMuted.withValues(alpha: isDark ? 0.8 : 0.5),
+      ),
     );
   }
 
-  Widget _buildTimeChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
+  /// Subtle footer row: walk, wait, ride breakdown + transfer count.
+  Widget _buildFooter(NusColorsData colors) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
+        Icon(Icons.directions_walk, size: 12, color: colors.textMuted),
+        const SizedBox(width: 3),
         Text(
-          label,
+          '${route.walkingMinutes}m',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: color,
+            color: colors.textMuted,
           ),
         ),
+        const SizedBox(width: 12),
+        Icon(Icons.schedule, size: 12, color: colors.textMuted),
+        const SizedBox(width: 3),
+        Text(
+          '${route.waitingMinutes}m wait',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: colors.textMuted,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Icon(Icons.directions_bus, size: 12, color: colors.textMuted),
+        const SizedBox(width: 3),
+        Text(
+          '${route.busMinutes}m ride',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: colors.textMuted,
+          ),
+        ),
+        if (route.transfers > 0) ...[
+          const SizedBox(width: 12),
+          Icon(Icons.swap_horiz, size: 12, color: colors.textMuted),
+          const SizedBox(width: 3),
+          Text(
+            '${route.transfers} transfer${route.transfers > 1 ? 's' : ''}',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: colors.textMuted,
+            ),
+          ),
+        ],
       ],
     );
   }

@@ -25,18 +25,13 @@ class SelectableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final bgColor = isSelected
-        ? Color.alphaBlend(
-            accentColor.withValues(alpha: 0.06),
-            AppColors.surface,
-          )
-        : AppColors.surface;
+        ? Color.alphaBlend(accentColor.withValues(alpha: 0.06), colors.surface)
+        : colors.surface;
     final borderColor = isSelected
-        ? Color.alphaBlend(
-            accentColor.withValues(alpha: 0.3),
-            AppColors.surface,
-          )
-        : AppColors.borderLight;
+        ? Color.alphaBlend(accentColor.withValues(alpha: 0.3), colors.surface)
+        : colors.borderLight;
 
     return GestureDetector(
       onTap: onTap,

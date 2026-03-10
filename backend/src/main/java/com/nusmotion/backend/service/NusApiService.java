@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -72,11 +73,16 @@ public class NusApiService {
     @Cacheable(value = "shuttleService", key = "#busstopname")
     public ShuttleServiceResult getShuttleService(String busstopname) {
         log.debug("Cache MISS — fetching /ShuttleService?busstopname={}", busstopname);
-        ShuttleServiceResponse response = nusApiClient.get()
-                .uri("/ShuttleService?busstopname={stop}", busstopname)
-                .retrieve()
-                .body(ShuttleServiceResponse.class);
-        return response != null ? response.shuttleServiceResult() : null;
+        try {
+            ShuttleServiceResponse response = nusApiClient.get()
+                    .uri("/ShuttleService?busstopname={stop}", busstopname)
+                    .retrieve()
+                    .body(ShuttleServiceResponse.class);
+            return response != null ? response.shuttleServiceResult() : null;
+        } catch (HttpClientErrorException.NotFound e) {
+            log.debug("Shuttle service not found for stop '{}' — likely a public bus stop", busstopname);
+            return null;
+        }
     }
 
     /**
@@ -85,13 +91,18 @@ public class NusApiService {
     @Cacheable(value = "activeBuses", key = "#routeCode")
     public List<ActiveBus> getActiveBuses(String routeCode) {
         log.debug("Cache MISS — fetching /ActiveBus?route_code={}", routeCode);
-        ActiveBusResponse response = nusApiClient.get()
-                .uri("/ActiveBus?route_code={route}", routeCode)
-                .retrieve()
-                .body(ActiveBusResponse.class);
-        return response != null && response.activeBusResult() != null
-                ? response.activeBusResult().activeBuses()
-                : List.of();
+        try {
+            ActiveBusResponse response = nusApiClient.get()
+                    .uri("/ActiveBus?route_code={route}", routeCode)
+                    .retrieve()
+                    .body(ActiveBusResponse.class);
+            return response != null && response.activeBusResult() != null
+                    ? response.activeBusResult().activeBuses()
+                    : List.of();
+        } catch (HttpClientErrorException.NotFound e) {
+            log.debug("Active buses not found for route '{}' — may not be an NUS route", routeCode);
+            return List.of();
+        }
     }
 
     /**
@@ -100,15 +111,20 @@ public class NusApiService {
     @Cacheable(value = "checkpoints", key = "#routeCode")
     public List<CheckPoint> getCheckpoints(String routeCode) {
         log.debug("Cache MISS — fetching /CheckPoint?route_code={}", routeCode);
-        CheckPointResponse response = nusApiClient.get()
-                .uri("/CheckPoint?route_code={route}", routeCode)
-                .retrieve()
-                .body(CheckPointResponse.class);
-        return response != null
-                && response.checkPointResult() != null
-                && response.checkPointResult().checkPoints() != null
-                ? response.checkPointResult().checkPoints()
-                : List.of();
+        try {
+            CheckPointResponse response = nusApiClient.get()
+                    .uri("/CheckPoint?route_code={route}", routeCode)
+                    .retrieve()
+                    .body(CheckPointResponse.class);
+            return response != null
+                    && response.checkPointResult() != null
+                    && response.checkPointResult().checkPoints() != null
+                    ? response.checkPointResult().checkPoints()
+                    : List.of();
+        } catch (HttpClientErrorException.NotFound e) {
+            log.debug("Checkpoints not found for route '{}' — may not be an NUS route", routeCode);
+            return List.of();
+        }
     }
 
     /**
@@ -168,15 +184,20 @@ public class NusApiService {
     @Cacheable(value = "pickupPoints", key = "#routeCode")
     public List<PickupPoint> getPickupPoints(String routeCode) {
         log.debug("Cache MISS — fetching /PickupPoint?route_code={}", routeCode);
-        PickupPointResponse response = nusApiClient.get()
-                .uri("/PickupPoint?route_code={route}", routeCode)
-                .retrieve()
-                .body(PickupPointResponse.class);
-        return response != null
-                && response.pickupPointResult() != null
-                && response.pickupPointResult().pickupPoints() != null
-                ? response.pickupPointResult().pickupPoints()
-                : List.of();
+        try {
+            PickupPointResponse response = nusApiClient.get()
+                    .uri("/PickupPoint?route_code={route}", routeCode)
+                    .retrieve()
+                    .body(PickupPointResponse.class);
+            return response != null
+                    && response.pickupPointResult() != null
+                    && response.pickupPointResult().pickupPoints() != null
+                    ? response.pickupPointResult().pickupPoints()
+                    : List.of();
+        } catch (HttpClientErrorException.NotFound e) {
+            log.debug("Pickup points not found for route '{}' — may not be an NUS route", routeCode);
+            return List.of();
+        }
     }
 
     /**

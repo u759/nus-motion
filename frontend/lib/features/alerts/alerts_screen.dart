@@ -33,7 +33,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
   }
 
   void _startPolling() {
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
       ref.invalidate(announcementsProvider);
       ref.invalidate(tickerTapesProvider);
@@ -57,46 +57,41 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
         lng: AppConstants.nusLongitude,
       )),
     );
+    final colors = context.nusColors;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxScrolled) => [
           SliverAppBar(
             pinned: true,
-            floating: true,
-            backgroundColor: AppColors.surface,
-            title: const Text(
+            floating: false,
+            backgroundColor: colors.surface,
+            title: Text(
               'Transit Alerts',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
               ),
             ),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search, color: AppColors.textSecondary),
-                onPressed: () {},
-              ),
-            ],
+            centerTitle: false,
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(52),
               child: Container(
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: AppColors.border)),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: colors.border)),
                 ),
                 child: TabBar(
                   controller: _tabController,
-                  indicatorColor: AppColors.primary,
+                  indicatorColor: colors.primary,
                   indicatorWeight: 2,
-                  labelColor: AppColors.primary,
+                  labelColor: colors.primary,
                   labelStyle: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
-                  unselectedLabelColor: AppColors.textMuted,
+                  unselectedLabelColor: colors.textMuted,
                   unselectedLabelStyle: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
@@ -120,6 +115,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
               tickerTapes: tickerTapes,
               weather: weather,
               filter: null,
+              onRetryAnnouncements: () => ref.invalidate(announcementsProvider),
             ),
             // Service Updates tab
             _AlertsList(
@@ -127,12 +123,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
               tickerTapes: tickerTapes,
               weather: weather,
               filter: 'service',
+              onRetryAnnouncements: () => ref.invalidate(announcementsProvider),
             ),
             // Maintenance tab
             _AlertsList(
               announcements: announcements,
               tickerTapes: tickerTapes,
               weather: weather,
+              onRetryAnnouncements: () => ref.invalidate(announcementsProvider),
               filter: 'maintenance',
             ),
           ],
@@ -147,12 +145,14 @@ class _AlertsList extends StatelessWidget {
   final AsyncValue<List<TickerTape>> tickerTapes;
   final AsyncValue weather;
   final String? filter;
+  final VoidCallback? onRetryAnnouncements;
 
   const _AlertsList({
     required this.announcements,
     required this.tickerTapes,
     required this.weather,
     this.filter,
+    this.onRetryAnnouncements,
   });
 
   @override
@@ -168,6 +168,31 @@ class _AlertsList extends StatelessWidget {
             error: (_, __) => const SizedBox.shrink(),
           ),
         if (filter == null) const SizedBox(height: 16),
+
+        // Live updates (ticker tapes) — right under weather, only on All tab
+        tickerTapes.when(
+          data: (tapes) {
+            if (tapes.isEmpty || filter != null) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Live Updates',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: context.nusColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...tapes.map((t) => _TickerCard(key: ValueKey(t.id), tape: t)),
+                const SizedBox(height: 16),
+              ],
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
 
         // Current Alerts
         announcements.when(
@@ -216,13 +241,12 @@ class _AlertsList extends StatelessWidget {
                 if (current.isNotEmpty) ...[
                   Row(
                     children: [
-                      const Text(
-                        'CURRENT ALERTS',
+                      Text(
+                        'Current',
                         style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textMuted,
-                          letterSpacing: 1.2,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: context.nusColors.textSecondary,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -232,11 +256,11 @@ class _AlertsList extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary,
+                          color: context.nusColors.primary,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          '${current.length} NEW',
+                          '${current.length} new',
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -257,13 +281,12 @@ class _AlertsList extends StatelessWidget {
                 ],
                 if (past.isNotEmpty) ...[
                   const SizedBox(height: 24),
-                  const Text(
-                    'PAST ALERTS',
+                  Text(
+                    'Past',
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted,
-                      letterSpacing: 1.2,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: context.nusColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -285,33 +308,10 @@ class _AlertsList extends StatelessWidget {
             );
           },
           loading: () => const ShimmerList(itemCount: 3, itemHeight: 90),
-          error: (error, _) => ErrorCard(message: error.toString()),
-        ),
-
-        // Ticker tapes
-        tickerTapes.when(
-          data: (tapes) {
-            if (tapes.isEmpty || filter != null) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 24),
-                const Text(
-                  'LIVE UPDATES',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textMuted,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ...tapes.map((t) => _TickerCard(key: ValueKey(t.id), tape: t)),
-              ],
-            );
-          },
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (error, _) => ErrorCard(
+            message: 'Failed to load alerts',
+            onRetry: onRetryAnnouncements,
+          ),
         ),
 
         const SizedBox(height: 24),
@@ -326,26 +326,24 @@ class _TickerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.warningBg,
+        color: colors.warningBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+        border: Border.all(color: colors.warning.withValues(alpha: 0.2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber, color: AppColors.warning, size: 20),
+          Icon(Icons.warning_amber, color: colors.warning, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               tape.message,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary,
-              ),
+              style: TextStyle(fontSize: 13, color: colors.textPrimary),
             ),
           ),
         ],

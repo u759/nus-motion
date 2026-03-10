@@ -96,10 +96,33 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   );
 
   // Minimal map style — suppress POIs, transit labels, and visual clutter
-  static const _mapStyle = '''
+  static const _lightMapStyle = '''
 [
   {"featureType":"poi","stylers":[{"visibility":"off"}]},
   {"featureType":"transit","stylers":[{"visibility":"off"}]}
+]
+''';
+
+  // Dark map style — suppress POIs/transit + dark colors
+  static const _darkMapStyle = '''
+[
+  {"elementType":"geometry","stylers":[{"color":"#1d2c4d"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#8ec3b9"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#1a3646"}]},
+  {"featureType":"administrative.country","elementType":"geometry.stroke","stylers":[{"color":"#4b6878"}]},
+  {"featureType":"landscape.man_made","elementType":"geometry.stroke","stylers":[{"color":"#334e87"}]},
+  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#023e58"}]},
+  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#304a7d"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#98a5be"}]},
+  {"featureType":"road","elementType":"labels.text.stroke","stylers":[{"color":"#1d2c4d"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#2c6675"}]},
+  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#255763"}]},
+  {"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#b0d5ce"}]},
+  {"featureType":"road.highway","elementType":"labels.text.stroke","stylers":[{"color":"#023e58"}]},
+  {"featureType":"transit","stylers":[{"visibility":"off"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0e1626"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4e6d70"}]}
 ]
 ''';
 
@@ -205,8 +228,10 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       _selectedStop = deselecting ? null : stopName;
       _highlightedStop = deselecting ? null : stopName; // Sync highlight
       _selectedBusPlate = null;
+      if (deselecting) _selectedRoute = null; // Clear route when exiting detail
       _scrollToSelection = fromMap;
     });
+    if (deselecting) _routeAnimController?.stop();
     if (_tabController.index != 0) _tabController.animateTo(0);
 
     // Center map on the selected stop (not when deselecting)
@@ -644,6 +669,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     if (!isBusNearby) return null;
 
     // Highlight ring around the stop (appears above bus markers)
+    final colors = context.nusColors;
     return Positioned(
       left: screenPos.dx - 18,
       top: screenPos.dy - 18,
@@ -653,8 +679,8 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
           height: 36,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primary, width: 3),
-            color: AppColors.primary.withValues(alpha: 0.15),
+            border: Border.all(color: colors.primary, width: 3),
+            color: colors.primary.withValues(alpha: 0.15),
           ),
         ),
       ),
@@ -771,7 +797,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
           Polyline(
             polylineId: PolylineId('preview_walk_$i'),
             points: points,
-            color: AppColors.textMuted,
+            color: const Color(0xFF94A3B8), // Walk path - neutral gray
             width: 4,
             patterns: [PatternItem.dash(15), PatternItem.gap(10)],
           ),
@@ -1211,46 +1237,53 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
               return KeyedSubtree(
                 key: _mapKey,
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _nusCenter,
-                    zoom: AppConstants.defaultZoom,
-                  ),
-                  style: _mapStyle,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                    // Set initial camera position for projection
-                    _currentCameraPosition = CameraPosition(
-                      target: _nusCenter,
-                      zoom: AppConstants.defaultZoom,
-                    );
-                    // Initial position calculation after map is ready
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _updateBusScreenPositions(animate: false);
-                    });
+                child: Builder(
+                  builder: (context) {
+                    final isDark =
+                        Theme.of(context).brightness == Brightness.dark;
+                    return GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: _nusCenter,
+                        zoom: AppConstants.defaultZoom,
+                      ),
+                      style: isDark ? _darkMapStyle : _lightMapStyle,
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                        // Set initial camera position for projection
+                        _currentCameraPosition = CameraPosition(
+                          target: _nusCenter,
+                          zoom: AppConstants.defaultZoom,
+                        );
+                        // Initial position calculation after map is ready
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted)
+                            _updateBusScreenPositions(animate: false);
+                        });
 
-                    final navState = ref.read(navigationStateProvider);
-                    if (navState.status == NavigationStatus.routePreview &&
-                        navState.route != null) {
-                      _fitMapToRoute(navState.route!);
-                    }
+                        final navState = ref.read(navigationStateProvider);
+                        if (navState.status == NavigationStatus.routePreview &&
+                            navState.route != null) {
+                          _fitMapToRoute(navState.route!);
+                        }
+                      },
+                      onCameraMove: _onCameraMove,
+                      onCameraIdle: _onCameraIdle,
+                      onTap: (_) => _clearAll(),
+                      myLocationEnabled:
+                          false, // Using custom LocationOverlayMarker
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                      mapToolbarEnabled: false,
+                      rotateGesturesEnabled: false,
+                      tiltGesturesEnabled: false,
+                      padding: EdgeInsets.only(
+                        top: _mapTopPadding,
+                        bottom: _panelHeight,
+                      ),
+                      polylines: _buildPolylines(navState),
+                      markers: _buildMarkers(navState),
+                    );
                   },
-                  onCameraMove: _onCameraMove,
-                  onCameraIdle: _onCameraIdle,
-                  onTap: (_) => _clearAll(),
-                  myLocationEnabled:
-                      false, // Using custom LocationOverlayMarker
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  mapToolbarEnabled: false,
-                  rotateGesturesEnabled: false,
-                  tiltGesturesEnabled: false,
-                  padding: EdgeInsets.only(
-                    top: _mapTopPadding,
-                    bottom: _panelHeight,
-                  ),
-                  polylines: _buildPolylines(navState),
-                  markers: _buildMarkers(navState),
                 ),
               );
             },
@@ -1321,59 +1354,64 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               child: AnimatedSwitcherDefaults(
                 duration: const Duration(milliseconds: 250),
                 child: _selectedRoute != null
-                    ? Container(
-                        key: const ValueKey('route_banner'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
+                    ? Builder(
+                        builder: (context) {
+                          final colors = context.nusColors;
+                          return Container(
+                            key: const ValueKey('route_banner'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            RouteBadge(
-                              routeCode: _selectedRoute!,
-                              fontSize: 13,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Route $_selectedRoute',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
                                 ),
-                              ),
+                              ],
                             ),
-                            _buildBusCount(),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _clearRoute,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(8),
+                            child: Row(
+                              children: [
+                                RouteBadge(
+                                  routeCode: _selectedRoute!,
+                                  fontSize: 13,
                                 ),
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 18,
-                                  color: AppColors.textSecondary,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Route $_selectedRoute',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: colors.textPrimary,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                _buildBusCount(),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: _clearRoute,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: colors.background,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: colors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       )
                     : hasDestination
                     ? _buildDestinationPreview(navState.destination!)
@@ -1392,25 +1430,30 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               curve: Curves.easeOut,
               right: 16,
               bottom: _panelHeight + 16,
-              child: FloatingActionButton.small(
-                heroTag: 'myLocation',
-                backgroundColor: AppColors.surface,
-                onPressed: () async {
-                  try {
-                    final pos = await Geolocator.getCurrentPosition();
-                    if (!mounted) return;
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLng(
-                        LatLng(pos.latitude, pos.longitude),
-                      ),
-                    );
-                  } catch (_) {}
+              child: Builder(
+                builder: (context) {
+                  final colors = context.nusColors;
+                  return FloatingActionButton.small(
+                    heroTag: 'myLocation',
+                    backgroundColor: colors.surface,
+                    onPressed: () async {
+                      try {
+                        final pos = await Geolocator.getCurrentPosition();
+                        if (!mounted) return;
+                        _mapController?.animateCamera(
+                          CameraUpdate.newLatLng(
+                            LatLng(pos.latitude, pos.longitude),
+                          ),
+                        );
+                      } catch (_) {}
+                    },
+                    child: Icon(
+                      Icons.my_location,
+                      color: colors.primary,
+                      size: 22,
+                    ),
+                  );
                 },
-                child: const Icon(
-                  Icons.my_location,
-                  color: AppColors.primary,
-                  size: 22,
-                ),
               ),
             ),
 
@@ -1425,26 +1468,31 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               child: MediaQuery.removeViewInsets(
                 context: context,
                 removeBottom: true,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, -2),
+                child: Builder(
+                  builder: (context) {
+                    final colors = context.nusColors;
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: _buildBottomPanelContent(
-                    navState,
-                    allSortedStops,
-                    lat,
-                    lng,
-                  ),
+                      child: _buildBottomPanelContent(
+                        navState,
+                        allSortedStops,
+                        lat,
+                        lng,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -1472,81 +1520,82 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
   /// Builds the destination preview banner shown when a destination is selected.
   Widget _buildDestinationPreview(Building destination) {
-    return Container(
-      key: const ValueKey('destination_preview'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.infoBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.location_on,
-              color: AppColors.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  destination.name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Destination',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              ref.read(navigationStateProvider.notifier).cancelNavigation();
-            },
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(8),
+    return Builder(
+      builder: (context) {
+        final colors = context.nusColors;
+        return Container(
+          key: const ValueKey('destination_preview'),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-              child: const Icon(
-                Icons.close,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colors.infoBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.location_on, color: colors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      destination.name,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Destination',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.textSecondary.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  ref.read(navigationStateProvider.notifier).cancelNavigation();
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1657,20 +1706,21 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   Widget _buildTabBar() {
+    final colors = context.nusColors;
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.borderLight)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.borderLight)),
       ),
       child: TabBar(
         controller: _tabController,
-        labelColor: AppColors.primary,
-        unselectedLabelColor: AppColors.textMuted,
+        labelColor: colors.primary,
+        unselectedLabelColor: colors.textMuted,
         labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         unselectedLabelStyle: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w500,
         ),
-        indicatorColor: AppColors.primary,
+        indicatorColor: colors.primary,
         indicatorWeight: 2.5,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
@@ -1705,6 +1755,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   Widget _buildBusCount() {
     if (_selectedRoute == null) return const SizedBox.shrink();
     final allBuses = ref.watch(allActiveBusesProvider);
+    final colors = context.nusColors;
     return allBuses.when(
       skipLoadingOnReload: true,
       data: (busMap) {
@@ -1714,15 +1765,15 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
             key: ValueKey(list.length),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.successBg,
+              color: colors.successBg,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '${list.length} bus${list.length != 1 ? 'es' : ''}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppColors.success,
+                color: colors.success,
               ),
             ),
           ),

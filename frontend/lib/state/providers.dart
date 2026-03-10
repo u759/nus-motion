@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/data/services/transit_service.dart';
 import 'package:frontend/data/repositories/favorites_repository.dart';
@@ -234,5 +236,51 @@ class RecentSearchesNotifier
   Future<void> clear() async {
     await _repo.clearRecentSearches();
     state = [];
+  }
+}
+
+// -- Theme Mode --
+enum AppThemeMode { light, dark, system }
+
+final themeModeProvider =
+    StateNotifierProvider<ThemeModeNotifier, AppThemeMode>((ref) {
+      return ThemeModeNotifier();
+    });
+
+class ThemeModeNotifier extends StateNotifier<AppThemeMode> {
+  static const _boxName = 'settings';
+  static const _key = 'themeMode';
+
+  ThemeModeNotifier() : super(AppThemeMode.system) {
+    _loadFromStorage();
+  }
+
+  void _loadFromStorage() {
+    final box = Hive.box<String>(_boxName);
+    final stored = box.get(_key);
+    if (stored != null) {
+      state = AppThemeMode.values.firstWhere(
+        (e) => e.name == stored,
+        orElse: () => AppThemeMode.system,
+      );
+    }
+  }
+
+  Future<void> setThemeMode(AppThemeMode mode) async {
+    state = mode;
+    final box = Hive.box<String>(_boxName);
+    await box.put(_key, mode.name);
+  }
+}
+
+/// Convert AppThemeMode to Flutter's ThemeMode
+ThemeMode toFlutterThemeMode(AppThemeMode mode) {
+  switch (mode) {
+    case AppThemeMode.light:
+      return ThemeMode.light;
+    case AppThemeMode.dark:
+      return ThemeMode.dark;
+    case AppThemeMode.system:
+      return ThemeMode.system;
   }
 }

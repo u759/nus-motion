@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/app/theme.dart';
+import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
 import 'package:frontend/core/utils/eta_formatter.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
@@ -41,6 +42,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
     final favoriteStops = ref.watch(favoriteStopsProvider);
     final favoriteRoutes = ref.watch(favoriteRoutesProvider);
     final recentSearches = ref.watch(recentSearchesProvider);
+    final colors = context.nusColors;
 
     final hasContent =
         favoriteStops.isNotEmpty ||
@@ -48,15 +50,15 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
         recentSearches.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        title: const Text(
+        backgroundColor: colors.surface,
+        title: Text(
           'Saved',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: colors.textPrimary,
           ),
         ),
         centerTitle: false,
@@ -68,36 +70,49 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
               subtitle: 'Bookmark stops and routes to see them here',
             )
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               children: [
                 // Favorite Stops
                 if (favoriteStops.isNotEmpty) ...[
-                  const _SectionHeader(title: 'FAVORITE STOPS'),
+                  const _SectionHeader(title: 'Stops'),
                   const SizedBox(height: 8),
-                  ...favoriteStops.map(
-                    (stop) => _FavoriteStopCard(
-                      stopName: stop,
-                      onDismissed: () =>
-                          ref.read(favoriteStopsProvider.notifier).toggle(stop),
-                    ),
-                  ),
+                  ...favoriteStops.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final stop = entry.value;
+                    return FadeSlideIn(
+                      key: ValueKey('fade_stop_$stop'),
+                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                      child: _FavoriteStopCard(
+                        stopName: stop,
+                        onDismissed: () => ref
+                            .read(favoriteStopsProvider.notifier)
+                            .toggle(stop),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 24),
                 ],
 
                 // Favorite Routes
                 if (favoriteRoutes.isNotEmpty) ...[
-                  const _SectionHeader(title: 'FAVORITE ROUTES'),
+                  const _SectionHeader(title: 'Routes'),
                   const SizedBox(height: 8),
-                  ...favoriteRoutes.map(
-                    (r) => _FavoriteRouteCard(
-                      from: r.from,
-                      to: r.to,
-                      onTap: () => context.go('/'),
-                      onDismissed: () => ref
-                          .read(favoriteRoutesProvider.notifier)
-                          .toggle(r.from, r.to),
-                    ),
-                  ),
+                  ...favoriteRoutes.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final r = entry.value;
+                    return FadeSlideIn(
+                      key: ValueKey('fade_route_${r.from}_${r.to}'),
+                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                      child: _FavoriteRouteCard(
+                        from: r.from,
+                        to: r.to,
+                        onTap: () => context.go('/'),
+                        onDismissed: () => ref
+                            .read(favoriteRoutesProvider.notifier)
+                            .toggle(r.from, r.to),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 24),
                 ],
 
@@ -105,29 +120,36 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                 if (recentSearches.isNotEmpty) ...[
                   Row(
                     children: [
-                      const _SectionHeader(title: 'RECENT SEARCHES'),
+                      const _SectionHeader(title: 'Recents'),
                       const Spacer(),
                       TextButton(
                         onPressed: () =>
                             ref.read(recentSearchesProvider.notifier).clear(),
-                        child: const Text(
+                        child: Text(
                           'Clear',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: colors.primary,
                           ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  ...recentSearches.map(
-                    (r) => _RecentSearchTile(
-                      from: r.from,
-                      to: r.to,
-                      onTap: () => context.go('/'),
-                    ),
-                  ),
+                  ...recentSearches.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final r = entry.value;
+                    return FadeSlideIn(
+                      key: ValueKey('fade_recent_${r.from}_${r.to}'),
+                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                      child: _RecentSearchTile(
+                        from: r.from,
+                        to: r.to,
+                        onTap: () => context.go('/'),
+                      ),
+                    );
+                  }),
                 ],
               ],
             ),
@@ -141,13 +163,13 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Text(
       title,
-      style: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: AppColors.textMuted,
-        letterSpacing: 1.2,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: colors.textSecondary,
       ),
     );
   }
@@ -169,6 +191,7 @@ class _FavoriteStopCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shuttles = ref.watch(shuttlesProvider(stopName));
+    final colors = context.nusColors;
 
     return Dismissible(
       key: ValueKey('stop_$stopName'),
@@ -178,55 +201,48 @@ class _FavoriteStopCard extends ConsumerWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: AppColors.error,
-          borderRadius: BorderRadius.circular(16),
+          color: colors.error,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      child: GestureDetector(
+      child: PressableScale(
         onTap: () => _navigateToStop(context, ref),
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.border, width: 0.5),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.directions_bus,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
+                  Icon(Icons.directions_bus, color: colors.primary, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       stopName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: colors.textPrimary,
                       ),
                     ),
                   ),
-                  Icon(Icons.bookmark, color: AppColors.primary, size: 20),
+                  Icon(Icons.bookmark, color: colors.primary, size: 20),
                 ],
               ),
               const SizedBox(height: 8),
               shuttles.when(
                 data: (result) {
                   if (result.shuttles.isEmpty) {
-                    return const Text(
+                    return Text(
                       'No services',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                      ),
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
                     );
                   }
                   return Wrap(
@@ -241,9 +257,9 @@ class _FavoriteStopCard extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Text(
                             eta,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary,
+                              color: colors.textSecondary,
                             ),
                           ),
                         ],
@@ -256,9 +272,9 @@ class _FavoriteStopCard extends ConsumerWidget {
                   width: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                error: (_, __) => const Text(
+                error: (_, __) => Text(
                   'Unavailable',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  style: TextStyle(fontSize: 12, color: colors.textMuted),
                 ),
               ),
             ],
@@ -284,6 +300,7 @@ class _FavoriteRouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Dismissible(
       key: ValueKey('route_${from}_$to'),
       direction: DismissDirection.endToStart,
@@ -292,24 +309,24 @@ class _FavoriteRouteCard extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: AppColors.error,
-          borderRadius: BorderRadius.circular(16),
+          color: colors.error,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      child: GestureDetector(
+      child: PressableScale(
         onTap: onTap,
         child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.border, width: 0.5),
           ),
           child: Row(
             children: [
-              const Icon(Icons.route, color: AppColors.primary, size: 20),
+              Icon(Icons.route, color: colors.primary, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -317,20 +334,16 @@ class _FavoriteRouteCard extends StatelessWidget {
                   children: [
                     Text(
                       '$from → $to',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: colors.textPrimary,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right,
-                color: AppColors.textMuted,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right, color: colors.textMuted, size: 20),
             ],
           ),
         ),
@@ -352,26 +365,24 @@ class _RecentSearchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final colors = context.nusColors;
+    return PressableScale(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.borderLight),
+          border: Border.all(color: colors.border, width: 0.5),
         ),
         child: Row(
           children: [
-            const Icon(Icons.history, color: AppColors.textMuted, size: 18),
+            Icon(Icons.history, color: colors.textMuted, size: 18),
             const SizedBox(width: 12),
             Text(
               '$from → $to',
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
+              style: TextStyle(fontSize: 13, color: colors.textSecondary),
             ),
           ],
         ),

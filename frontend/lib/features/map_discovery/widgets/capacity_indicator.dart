@@ -8,19 +8,20 @@ class CapacityIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final level = _parseLevel(passengers);
     final Color color;
     final String label;
 
     switch (level) {
       case _CrowdLevel.low:
-        color = AppColors.success;
+        color = colors.success;
         label = 'Low';
       case _CrowdLevel.medium:
-        color = AppColors.warning;
+        color = colors.warning;
         label = 'Med';
       case _CrowdLevel.high:
-        color = AppColors.error;
+        color = colors.error;
         label = 'Full';
       case _CrowdLevel.unknown:
         return const SizedBox.shrink();

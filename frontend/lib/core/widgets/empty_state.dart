@@ -15,20 +15,30 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 56, color: AppColors.textMuted),
-            const SizedBox(height: 16),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: colors.infoBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 32, color: colors.primary),
+            ),
+            const SizedBox(height: 20),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+                letterSpacing: -0.2,
               ),
               textAlign: TextAlign.center,
             ),
@@ -36,9 +46,10 @@ class EmptyState extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 subtitle!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textMuted,
+                  color: colors.textMuted,
+                  height: 1.5,
                 ),
                 textAlign: TextAlign.center,
               ),

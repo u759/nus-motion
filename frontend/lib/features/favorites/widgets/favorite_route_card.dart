@@ -17,45 +17,38 @@ class FavoriteRouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.border, width: 0.5),
         ),
         child: Row(
           children: [
-            const Icon(Icons.route, color: AppColors.primary, size: 20),
+            Icon(Icons.route, color: colors.primary, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 '$from → $to',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colors.textPrimary,
                 ),
               ),
             ),
             if (onRemove != null)
               GestureDetector(
                 onTap: onRemove,
-                child: const Icon(
-                  Icons.bookmark,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+                child: Icon(Icons.bookmark, color: colors.primary, size: 20),
               )
             else
-              const Icon(
-                Icons.chevron_right,
-                color: AppColors.textMuted,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right, color: colors.textMuted, size: 20),
           ],
         ),
       ),

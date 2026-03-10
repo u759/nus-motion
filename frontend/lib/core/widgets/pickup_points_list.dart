@@ -367,16 +367,16 @@ class _PickupPointRowState extends State<_PickupPointRow>
                                       : FontWeight.w500,
                                   color: widget.isHighlighted
                                       ? widget.routeColor
-                                      : AppColors.textPrimary,
+                                      : context.nusColors.textPrimary,
                                 ),
                               ),
                               if (widget.shortName.isNotEmpty &&
                                   widget.shortName != widget.name)
                                 Text(
                                   widget.shortName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.textMuted,
+                                    color: context.nusColors.textMuted,
                                   ),
                                 ),
                             ],
@@ -441,7 +441,9 @@ class _TimelinePainter extends CustomPainter {
 
     // Draw circle fill
     final fillPaint = Paint()
-      ..color = (isFirst || isLast || isFilled) ? routeColor : AppColors.surface
+      ..color = (isFirst || isLast || isFilled)
+          ? routeColor
+          : const Color(0xFFFFFFFF)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(centerX, centerY), circleRadius, fillPaint);
 
@@ -548,20 +550,25 @@ class _TimelineUserMarker extends StatelessWidget {
       top: top.clamp(0, totalHeight - markerSize),
       width: markerSize,
       height: markerSize,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.primary,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
+      child: Builder(
+        builder: (context) {
+          final colors = context.nusColors;
+          return Container(
+            decoration: BoxDecoration(
+              color: colors.primary,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: const Icon(Icons.person, color: Colors.white, size: 12),
+            child: const Icon(Icons.person, color: Colors.white, size: 12),
+          );
+        },
       ),
     );
   }

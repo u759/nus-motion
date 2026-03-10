@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/weather_mapper.dart';
 import 'package:frontend/data/models/weather_snapshot.dart';
 
@@ -11,15 +12,17 @@ class WeatherCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final info = WeatherMapper.fromCode(weather.weatherCode);
 
+    final colors = context.nusColors;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+        gradient: LinearGradient(
+          colors: [colors.primary, colors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [

@@ -5,6 +5,7 @@ import 'package:frontend/features/map_discovery/map_discovery_screen.dart';
 import 'package:frontend/features/map_discovery/models/navigation_state.dart';
 import 'package:frontend/features/favorites/favorites_screen.dart';
 import 'package:frontend/features/alerts/alerts_screen.dart';
+import 'package:frontend/features/settings/settings_screen.dart';
 import 'package:frontend/app/theme.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -42,6 +43,14 @@ final router = GoRouter(
             ),
           ],
         ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings',
+              builder: (context, state) => const SettingsScreen(),
+            ),
+          ],
+        ),
       ],
     ),
   ],
@@ -56,6 +65,7 @@ class BottomNavShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch navigation state to handle back for explore tab
     final navState = ref.watch(navigationStateProvider);
+    final colors = context.nusColors;
 
     // Allow system pop only when navigation state is idle OR not on explore tab
     final canPop =
@@ -82,22 +92,20 @@ class BottomNavShell extends ConsumerWidget {
         resizeToAvoidBottomInset: false,
         body: navigationShell,
         bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(
-              top: BorderSide(color: AppColors.borderLight, width: 1),
-            ),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            border: Border(top: BorderSide(color: colors.border, width: 1)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black12,
-                blurRadius: 8,
-                offset: Offset(0, -2),
+                color: colors.textPrimary.withValues(alpha: 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: BottomNavigationBar(
                 currentIndex: navigationShell.currentIndex,
                 onTap: (index) => navigationShell.goBranch(
@@ -106,30 +114,37 @@ class BottomNavShell extends ConsumerWidget {
                 ),
                 elevation: 0,
                 backgroundColor: Colors.transparent,
-                selectedItemColor: AppColors.primary,
-                unselectedItemColor: AppColors.textMuted,
+                selectedItemColor: colors.primary,
+                unselectedItemColor: colors.textMuted,
                 type: BottomNavigationBarType.fixed,
-                selectedFontSize: 10,
-                unselectedFontSize: 10,
+                selectedFontSize: 11,
+                unselectedFontSize: 11,
                 selectedLabelStyle: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w400,
                 ),
                 items: const [
                   BottomNavigationBarItem(
-                    icon: Icon(Icons.explore_outlined),
-                    activeIcon: Icon(Icons.explore),
-                    label: 'EXPLORE',
+                    icon: Icon(Icons.near_me_outlined),
+                    activeIcon: Icon(Icons.near_me),
+                    label: 'Explore',
                   ),
                   BottomNavigationBarItem(
                     icon: Icon(Icons.bookmark_outline),
                     activeIcon: Icon(Icons.bookmark),
-                    label: 'SAVED',
+                    label: 'Saved',
                   ),
                   BottomNavigationBarItem(
                     icon: Icon(Icons.notifications_outlined),
                     activeIcon: Icon(Icons.notifications),
-                    label: 'ALERTS',
+                    label: 'Alerts',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.settings_outlined),
+                    activeIcon: Icon(Icons.settings),
+                    label: 'Settings',
                   ),
                 ],
               ),

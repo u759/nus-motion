@@ -19,6 +19,7 @@ class SavedStopCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.nusColors;
     final shuttles = ref.watch(shuttlesProvider(stopName));
 
     return GestureDetector(
@@ -27,37 +28,33 @@ class SavedStopCard extends ConsumerWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.border, width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(
-                  Icons.directions_bus,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+                Icon(Icons.directions_bus, color: colors.primary, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     stopName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: colors.textPrimary,
                     ),
                   ),
                 ),
                 if (onRemove != null)
                   GestureDetector(
                     onTap: onRemove,
-                    child: const Icon(
+                    child: Icon(
                       Icons.bookmark,
-                      color: AppColors.primary,
+                      color: colors.primary,
                       size: 20,
                     ),
                   ),
@@ -67,9 +64,9 @@ class SavedStopCard extends ConsumerWidget {
             shuttles.when(
               data: (result) {
                 if (result.shuttles.isEmpty) {
-                  return const Text(
+                  return Text(
                     'No services available',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                    style: TextStyle(fontSize: 12, color: colors.textMuted),
                   );
                 }
                 return Wrap(
@@ -84,9 +81,9 @@ class SavedStopCard extends ConsumerWidget {
                         const SizedBox(width: 4),
                         Text(
                           eta,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.textSecondary,
+                            color: colors.textSecondary,
                           ),
                         ),
                       ],
@@ -99,9 +96,9 @@ class SavedStopCard extends ConsumerWidget {
                 width: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              error: (_, __) => const Text(
+              error: (_, __) => Text(
                 'Unavailable',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                style: TextStyle(fontSize: 12, color: colors.textMuted),
               ),
             ),
           ],

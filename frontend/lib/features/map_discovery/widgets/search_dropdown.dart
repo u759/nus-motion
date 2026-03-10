@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/app/theme.dart';
+import 'package:frontend/core/utils/animations.dart';
+import 'package:frontend/core/widgets/weather_widget.dart';
 import 'package:frontend/data/models/building.dart';
 import 'package:frontend/data/models/bus_stop.dart';
 import 'package:frontend/state/providers.dart';
@@ -151,6 +153,7 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
   }
 
   Widget _buildDropdownContent() {
+    final colors = context.nusColors;
     return TapRegion(
       onTapOutside: (_) {
         _focusNode.unfocus();
@@ -158,8 +161,8 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
       child: Container(
         constraints: const BoxConstraints(maxHeight: 320),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.12),
@@ -169,14 +172,27 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: _buildFilteredResults(),
+          borderRadius: BorderRadius.circular(12),
+          // Use Consumer to properly respond to provider changes in overlay
+          child: Consumer(
+            builder: (context, ref, _) => _buildFilteredResults(context, ref),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildFilteredResults() {
+  /// Minimum characters required before searching.
+  static const _minQueryLength = 3;
+
+  Widget _buildFilteredResults(BuildContext context, WidgetRef ref) {
+    final colors = context.nusColors;
+
+    // Show placeholder for short queries — don't trigger loading state
+    if (_query.length < _minQueryLength) {
+      return _buildMinCharsHint(colors);
+    }
+
     final stopsAsync = ref.watch(stopsProvider);
     final buildingsAsync = ref.watch(buildingsProvider);
 
@@ -192,24 +208,24 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
                   Icon(
                     Icons.search_off,
                     size: 20,
-                    color: AppColors.textMuted.withValues(alpha: 0.6),
+                    color: colors.textMuted.withValues(alpha: 0.6),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'No results found',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                    style: TextStyle(color: colors.textMuted, fontSize: 14),
                   ),
                 ],
               ),
             );
           }
-          return _buildResultsList(results);
+          return _buildResultsList(context, results);
         },
-        loading: () => _buildLoadingState(),
-        error: (_, __) => _buildErrorState(),
+        loading: () => _buildLoadingState(colors),
+        error: (_, __) => _buildErrorState(colors),
       ),
-      loading: () => _buildLoadingState(),
-      error: (_, __) => _buildErrorState(),
+      loading: () => _buildLoadingState(colors),
+      error: (_, __) => _buildErrorState(colors),
     );
   }
 
@@ -276,49 +292,74 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
     return results.take(8).toList();
   }
 
-  Widget _buildResultsList(List<_SearchResult> results) {
+  Widget _buildResultsList(BuildContext context, List<_SearchResult> results) {
+    final colors = context.nusColors;
     return ListView.separated(
       shrinkWrap: true,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: results.length,
       separatorBuilder: (_, __) =>
-          const Divider(height: 1, indent: 52, color: AppColors.borderLight),
+          Divider(height: 1, indent: 52, color: colors.borderLight),
       itemBuilder: (context, index) {
         final result = results[index];
-        return _SearchResultTile(
-          result: result,
-          onTap: () => _selectResult(result),
+        return FadeSlideIn(
+          key: ValueKey('search_fade_${result.name}'),
+          delay: Duration(milliseconds: 30 * index.clamp(0, 8)),
+          child: _SearchResultTile(
+            result: result,
+            onTap: () => _selectResult(result),
+          ),
         );
       },
     );
   }
 
-  Widget _buildLoadingState() {
-    return const Padding(
-      padding: EdgeInsets.all(24),
+  Widget _buildLoadingState(NusColorsData colors) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
       child: Center(
         child: SizedBox(
           width: 24,
           height: 24,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            color: AppColors.primary,
+            color: colors.primary,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildErrorState() {
-    return const Padding(
-      padding: EdgeInsets.all(16),
+  Widget _buildMinCharsHint(NusColorsData colors) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          Icon(Icons.error_outline, size: 20, color: AppColors.error),
-          SizedBox(width: 8),
+          Icon(
+            Icons.keyboard,
+            size: 20,
+            color: colors.textMuted.withValues(alpha: 0.6),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Type $_minQueryLength+ characters to search',
+            style: TextStyle(color: colors.textMuted, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(NusColorsData colors) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 20, color: colors.error),
+          const SizedBox(width: 8),
           Text(
             'Failed to load locations',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            style: TextStyle(color: colors.textSecondary, fontSize: 14),
           ),
         ],
       ),
@@ -369,84 +410,90 @@ class _SearchDropdownState extends ConsumerState<SearchDropdown>
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return CompositedTransformTarget(
       link: _layerLink,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 12),
-              child: Icon(
-                Icons.search,
-                color: AppColors.textSecondary,
-                size: 22,
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Icon(
+                      Icons.search,
+                      color: colors.textSecondary,
+                      size: 22,
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      decoration: InputDecoration(
+                        filled: false,
+                        hintText: 'Where are you heading?',
+                        hintStyle: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                      ),
+                      style: TextStyle(fontSize: 15, color: colors.textPrimary),
+                      onChanged: (value) {
+                        setState(() => _query = value);
+                        if (value.isNotEmpty && !_isDropdownVisible) {
+                          _showDropdown();
+                        } else if (value.isEmpty && _isDropdownVisible) {
+                          _hideDropdown();
+                        } else {
+                          _updateDropdown();
+                        }
+                      },
+                    ),
+                  ),
+                  if (_query.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _controller.clear();
+                        setState(() => _query = '');
+                        _hideDropdown();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Icon(
+                          Icons.clear,
+                          color: colors.textMuted,
+                          size: 20,
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 12),
+                ],
               ),
             ),
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                decoration: const InputDecoration(
-                  filled: false,
-                  hintText: 'Where are you heading?',
-                  hintStyle: TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textPrimary,
-                ),
-                onChanged: (value) {
-                  setState(() => _query = value);
-                  if (value.isNotEmpty && !_isDropdownVisible) {
-                    _showDropdown();
-                  } else if (value.isEmpty && _isDropdownVisible) {
-                    _hideDropdown();
-                  } else {
-                    _updateDropdown();
-                  }
-                },
-              ),
-            ),
-            if (_query.isNotEmpty)
-              GestureDetector(
-                onTap: () {
-                  _controller.clear();
-                  setState(() => _query = '');
-                  _hideDropdown();
-                },
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: Icon(
-                    Icons.clear,
-                    color: AppColors.textMuted,
-                    size: 20,
-                  ),
-                ),
-              )
-            else
-              const SizedBox(width: 12),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          const WeatherWidget(),
+        ],
       ),
     );
   }
@@ -467,6 +514,7 @@ class _SearchResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -477,12 +525,12 @@ class _SearchResultTile extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: result.isStop ? AppColors.successBg : AppColors.infoBg,
+                color: result.isStop ? colors.successBg : colors.infoBg,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 result.isStop ? Icons.directions_bus : Icons.location_on,
-                color: result.isStop ? AppColors.success : AppColors.primary,
+                color: result.isStop ? colors.success : colors.primary,
                 size: 18,
               ),
             ),
@@ -490,10 +538,10 @@ class _SearchResultTile extends StatelessWidget {
             Expanded(
               child: Text(
                 result.displayName,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: AppColors.textPrimary,
+                  color: colors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -502,10 +550,7 @@ class _SearchResultTile extends StatelessWidget {
             if (result.distanceMeters > 0)
               Text(
                 _formatDistance(result.distanceMeters),
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                ),
+                style: TextStyle(fontSize: 13, color: colors.textMuted),
               ),
           ],
         ),

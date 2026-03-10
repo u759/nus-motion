@@ -48,7 +48,7 @@ public class CacheConfig {
 
         manager.registerCustomCache("announcements",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(30))
+                .expireAfterWrite(Duration.ofSeconds(15))
                 .maximumSize(1)
                 .build());
 
@@ -84,7 +84,7 @@ public class CacheConfig {
 
         manager.registerCustomCache("tickerTapes",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(30))
+                .expireAfterWrite(Duration.ofSeconds(15))
                 .maximumSize(1)
                 .build());
 
@@ -102,13 +102,13 @@ public class CacheConfig {
 
         manager.registerCustomCache("nearbyStops",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(20))
+                .expireAfterWrite(Duration.ofSeconds(5))
                 .maximumSize(500)
                 .build());
 
         manager.registerCustomCache("routePlans",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofSeconds(20))
+                .expireAfterWrite(Duration.ofSeconds(10))
                 .maximumSize(200)
                 .build());
 

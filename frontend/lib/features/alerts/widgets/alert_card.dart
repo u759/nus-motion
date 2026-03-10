@@ -55,7 +55,10 @@ class _AlertCardState extends State<AlertCard>
 
   @override
   Widget build(BuildContext context) {
-    final (Color bgColor, Color iconColor, IconData icon) = _resolveStyle();
+    final colors = context.nusColors;
+    final (Color bgColor, Color iconColor, IconData icon) = _resolveStyle(
+      colors,
+    );
     final text = widget.announcement.text;
     final needsExpand = text.length > 120;
 
@@ -67,9 +70,9 @@ class _AlertCardState extends State<AlertCard>
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: widget.isResolved ? AppColors.surfaceMuted : AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
+          color: widget.isResolved ? colors.surfaceMuted : colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.border),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,45 +91,40 @@ class _AlertCardState extends State<AlertCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header row: service IDs and date
                   Row(
                     children: [
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(children: _parseHtmlLinks(_extractTitle())),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (widget.announcement.affectedServiceIds.isNotEmpty)
+                      if (widget
+                          .announcement
+                          .affectedServiceIds
+                          .isNotEmpty) ...[
                         Text(
                           widget.announcement.affectedServiceIds,
-                          style: const TextStyle(
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
+                      if (widget.announcement.createdOn != null)
+                        Text(
+                          _formatDate(widget.announcement.createdOn!),
+                          style: TextStyle(
                             fontSize: 11,
-                            color: AppColors.textMuted,
+                            color: colors.textMuted,
                           ),
                         ),
                     ],
                   ),
-                  // Show date/time if available
-                  if (widget.announcement.createdOn != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      _formatDate(widget.announcement.createdOn!),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
+                  if (widget.announcement.affectedServiceIds.isNotEmpty ||
+                      widget.announcement.createdOn != null)
+                    const SizedBox(height: 6),
+                  // Body text with HTML links
                   AnimatedCrossFade(
-                    firstChild: _buildRichText(text, maxLines: 3),
-                    secondChild: _buildRichText(text, maxLines: null),
+                    firstChild: _buildRichText(colors, text, maxLines: 3),
+                    secondChild: _buildRichText(colors, text, maxLines: null),
                     crossFadeState: _isExpanded
                         ? CrossFadeState.showSecond
                         : CrossFadeState.showFirst,
@@ -145,16 +143,16 @@ class _AlertCardState extends State<AlertCard>
                           child: Icon(
                             Icons.expand_more,
                             size: 18,
-                            color: AppColors.primary,
+                            color: colors.primary,
                           ),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           _isExpanded ? 'Show less' : 'Show more',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.primary,
+                            color: colors.primary,
                           ),
                         ),
                       ],
@@ -169,18 +167,18 @@ class _AlertCardState extends State<AlertCard>
     );
   }
 
-  Widget _buildRichText(String text, {int? maxLines}) {
-    final spans = _parseHtmlLinks(text);
+  Widget _buildRichText(NusColorsData colors, String text, {int? maxLines}) {
+    final spans = _parseHtmlLinks(colors, text);
     return Text.rich(
       TextSpan(children: spans),
-      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+      style: TextStyle(fontSize: 13, color: colors.textSecondary),
       maxLines: maxLines,
       overflow: maxLines != null ? TextOverflow.ellipsis : TextOverflow.clip,
     );
   }
 
   /// Parses <a href="url">text</a> tags into tappable links
-  List<InlineSpan> _parseHtmlLinks(String text) {
+  List<InlineSpan> _parseHtmlLinks(NusColorsData colors, String text) {
     final spans = <InlineSpan>[];
     final regex = RegExp(r'<a\s+href="([^"]+)"[^>]*>([^<]+)</a>');
     int lastEnd = 0;
@@ -199,10 +197,10 @@ class _AlertCardState extends State<AlertCard>
       spans.add(
         TextSpan(
           text: linkText,
-          style: const TextStyle(
-            color: AppColors.primary,
+          style: TextStyle(
+            color: colors.primary,
             decoration: TextDecoration.underline,
-            decorationColor: AppColors.primary,
+            decorationColor: colors.primary,
           ),
           recognizer: recognizer,
         ),
@@ -225,8 +223,13 @@ class _AlertCardState extends State<AlertCard>
 
   Future<void> _launchUrl(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
+    if (uri == null) return;
+    // Don't use canLaunchUrl - it can return false on Android 11+ even for valid URLs.
+    // Just try to launch directly with external app mode.
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Failed to launch URL: $url - $e');
     }
   }
 
@@ -260,9 +263,9 @@ class _AlertCardState extends State<AlertCard>
     return months[month - 1];
   }
 
-  (Color, Color, IconData) _resolveStyle() {
+  (Color, Color, IconData) _resolveStyle(NusColorsData colors) {
     if (widget.isResolved) {
-      return (AppColors.mutedBg, AppColors.textMuted, Icons.check_circle);
+      return (colors.mutedBg, colors.textMuted, Icons.check_circle);
     }
     final p = widget.announcement.priority.toLowerCase();
     final t = widget.announcement.text.toLowerCase();
@@ -270,19 +273,11 @@ class _AlertCardState extends State<AlertCard>
         p.contains('critical') ||
         t.contains('delay') ||
         t.contains('suspend')) {
-      return (AppColors.errorBg, AppColors.error, Icons.warning);
+      return (colors.errorBg, colors.error, Icons.warning);
     }
     if (t.contains('maintenance') || t.contains('road')) {
-      return (AppColors.warningBg, AppColors.orange, Icons.settings_suggest);
+      return (colors.warningBg, colors.orange, Icons.settings_suggest);
     }
-    return (AppColors.infoBg, AppColors.primary, Icons.info);
-  }
-
-  String _extractTitle() {
-    final text = widget.announcement.text;
-    if (text.length <= 60) return text;
-    final dot = text.indexOf('.');
-    if (dot > 0 && dot <= 60) return text.substring(0, dot);
-    return '${text.substring(0, 57)}...';
+    return (colors.infoBg, colors.primary, Icons.info);
   }
 }

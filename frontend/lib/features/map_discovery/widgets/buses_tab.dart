@@ -82,12 +82,17 @@ class BusesTab extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => const Center(
+      error: (_, __) => Center(
         child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Text(
-            'Failed to load buses',
-            style: TextStyle(color: AppColors.textMuted),
+          padding: const EdgeInsets.all(20),
+          child: Builder(
+            builder: (context) {
+              final colors = context.nusColors;
+              return Text(
+                'Failed to load buses',
+                style: TextStyle(color: colors.textMuted),
+              );
+            },
           ),
         ),
       ),
@@ -115,6 +120,7 @@ class _BusItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     final bus = entry.bus;
     final routeColor = RouteBadge.colorForRoute(entry.route);
     final load = bus.loadInfo;
@@ -127,11 +133,11 @@ class _BusItem extends StatelessWidget {
 
     final selectedBg = Color.alphaBlend(
       routeColor.withValues(alpha: 0.06),
-      AppColors.surface,
+      colors.surface,
     );
     final selectedBorder = Color.alphaBlend(
       routeColor.withValues(alpha: 0.3),
-      AppColors.surface,
+      colors.surface,
     );
 
     return GestureDetector(
@@ -140,10 +146,11 @@ class _BusItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
-          color: isSelected ? selectedBg : AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
+          color: isSelected ? selectedBg : colors.surface,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? selectedBorder : AppColors.borderLight,
+            color: isSelected ? selectedBorder : colors.borderLight,
+            width: 0.5,
           ),
         ),
         child: Padding(
@@ -159,10 +166,10 @@ class _BusItem extends StatelessWidget {
                     // Plate number
                     Text(
                       bus.vehPlate,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: colors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -202,7 +209,10 @@ class _BusItem extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: _crowdColor(crowdText).withValues(alpha: 0.1),
+                        color: _crowdColor(
+                          context,
+                          crowdText,
+                        ).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -210,7 +220,7 @@ class _BusItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: _crowdColor(crowdText),
+                          color: _crowdColor(context, crowdText),
                         ),
                       ),
                     ),
@@ -221,7 +231,7 @@ class _BusItem extends StatelessWidget {
               Icon(
                 isSelected ? Icons.map : Icons.chevron_right,
                 size: 18,
-                color: isSelected ? routeColor : AppColors.textMuted,
+                color: isSelected ? routeColor : colors.textMuted,
               ),
             ],
           ),
@@ -230,16 +240,17 @@ class _BusItem extends StatelessWidget {
     );
   }
 
-  static Color _crowdColor(String level) {
+  static Color _crowdColor(BuildContext context, String level) {
+    final colors = context.nusColors;
     switch (level.toLowerCase()) {
       case 'low':
-        return AppColors.success;
+        return colors.success;
       case 'medium':
-        return AppColors.warning;
+        return colors.warning;
       case 'high':
-        return AppColors.error;
+        return colors.error;
       default:
-        return AppColors.textMuted;
+        return colors.textMuted;
     }
   }
 }
@@ -252,14 +263,15 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.nusColors;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: AppColors.textMuted),
+        Icon(icon, size: 12, color: colors.textMuted),
         const SizedBox(width: 3),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 11, color: colors.textSecondary),
         ),
       ],
     );

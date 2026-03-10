@@ -109,6 +109,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final panelHeight = screenHeight * 0.45;
+    final colors = context.nusColors;
 
     // Watch routeProvider for fresh data
     final navState = ref.watch(navigationStateProvider);
@@ -126,7 +127,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
             height: panelHeight,
             child: Container(
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: colors.surface,
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(20),
                 ),
@@ -141,7 +142,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               child: Column(
                 children: [
                   _buildPanelHeader(displayRoute),
-                  const Divider(height: 1, color: AppColors.borderLight),
+                  Divider(height: 1, color: colors.borderLight),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(
@@ -212,6 +213,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   }
 
   Widget _buildPanelHeader(RoutePlanResult route) {
+    final colors = context.nusColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
       child: Row(
@@ -223,12 +225,12 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
+                color: colors.surfaceMuted,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.arrow_back_ios_new,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
                 size: 16,
               ),
             ),
@@ -239,10 +241,10 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           Expanded(
             child: Text(
               route.to,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: colors.textPrimary,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -252,15 +254,15 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.infoBg,
+              color: colors.infoBg,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '${route.totalMinutes} min',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: AppColors.primary,
+                color: colors.primary,
               ),
             ),
           ),
@@ -270,6 +272,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   }
 
   List<Widget> _buildRouteBadges(RoutePlanResult route) {
+    final colors = context.nusColors;
     final badges = <Widget>[];
     final busLegs = route.legs.where((leg) => leg.isBus).toList();
 
@@ -277,12 +280,12 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
       if (busLegs[i].routeCode != null) {
         if (i > 0) {
           badges.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Icon(
                 Icons.chevron_right,
                 size: 16,
-                color: AppColors.textMuted,
+                color: colors.textMuted,
               ),
             ),
           );
@@ -293,20 +296,16 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
 
     if (badges.isEmpty) {
       badges.add(
-        const Icon(
-          Icons.directions_walk,
-          size: 20,
-          color: AppColors.textSecondary,
-        ),
+        Icon(Icons.directions_walk, size: 20, color: colors.textSecondary),
       );
       badges.add(const SizedBox(width: 6));
       badges.add(
-        const Text(
+        Text(
           'Walking only',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
+            color: colors.textSecondary,
           ),
         ),
       );
@@ -414,12 +413,13 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   }
 
   Widget _buildJourneyTimeline(RoutePlanResult route) {
+    final colors = context.nusColors;
     final legs = route.legs;
     if (legs.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'No route details available',
-          style: TextStyle(color: AppColors.textMuted),
+          style: TextStyle(color: colors.textMuted),
         ),
       );
     }
@@ -446,17 +446,18 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     bool isLast = false,
     bool isActive = false,
   }) {
+    final colors = context.nusColors;
     final isWalk = leg.isWalk;
     final isWait = leg.isWait;
     final isBus = leg.isBus;
     final isExpanded = _expandedLegs.contains(index);
     final color = isWalk
-        ? AppColors.textMuted
+        ? colors.textMuted
         : isWait
-        ? AppColors.warning
+        ? colors.warning
         : (leg.routeCode != null
               ? RouteBadge.colorForRoute(leg.routeCode!)
-              : AppColors.primary);
+              : colors.primary);
     final title = _formatLegTitle(leg, index);
     final subtitle = leg.isWait && leg.instruction == title
         ? null
@@ -474,10 +475,10 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colors.textPrimary,
                 ),
               ),
             ),
@@ -490,7 +491,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
                 child: Icon(
                   Icons.keyboard_arrow_down,
                   size: 20,
-                  color: AppColors.textMuted,
+                  color: colors.textMuted,
                 ),
               ),
             ],
@@ -500,10 +501,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 13, color: colors.textSecondary),
           ),
         ],
         if (leg.minutes != null && !isWait) ...[
@@ -511,15 +509,15 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
+              color: colors.surfaceMuted,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               '${leg.minutes} min',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
             ),
           ),
@@ -530,18 +528,18 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.1),
+              color: colors.success.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const PulsingDot(color: AppColors.success),
+                PulsingDot(color: colors.success),
                 const SizedBox(width: 4),
                 Text(
                   '${leg.minutes} min',
-                  style: const TextStyle(
-                    color: AppColors.success,
+                  style: TextStyle(
+                    color: colors.success,
                     fontWeight: FontWeight.w600,
                     fontSize: 11,
                   ),
@@ -551,8 +549,14 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
           ),
         ],
         // Show expanded stops for bus legs
-        if (isBus && isExpanded && leg.routeCode != null)
-          _buildExpandedStops(leg, color, index),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: isBus && isExpanded && leg.routeCode != null
+              ? _buildExpandedStops(leg, color, index)
+              : const SizedBox.shrink(),
+        ),
       ],
     );
 
@@ -567,11 +571,11 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               height: 28,
               decoration: BoxDecoration(
                 color: isActive
-                    ? AppColors.success.withValues(alpha: 0.2)
+                    ? colors.success.withValues(alpha: 0.2)
                     : color.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isActive ? AppColors.success : color,
+                  color: isActive ? colors.success : color,
                   width: 2,
                 ),
               ),
@@ -582,14 +586,16 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
                     ? Icons.schedule
                     : Icons.directions_bus,
                 size: 14,
-                color: isActive ? AppColors.success : color,
+                color: isActive ? colors.success : color,
               ),
             ),
             if (!isLast)
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
                 width: 2,
                 height: isExpanded ? 180 : 50,
-                color: AppColors.border,
+                color: colors.border,
               ),
           ],
         ),
