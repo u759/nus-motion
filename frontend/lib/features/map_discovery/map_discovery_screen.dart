@@ -37,7 +37,10 @@ class MapDiscoveryScreen extends ConsumerStatefulWidget {
 }
 
 class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with
+        TickerProviderStateMixin,
+        WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin {
   GoogleMapController? _mapController;
   Timer? _pollTimer;
   Timer? _highlightFlashTimer;
@@ -71,6 +74,9 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
   // Bus overlay screen positions (for GPU-accelerated animation)
   Map<String, Offset> _busScreenPositions = {};
+
+  // Cached checkpoint LatLngs for selected route polyline (explore mode)
+  List<LatLng> _routeCheckpointLatLngs = [];
 
   // Track previous bus lat/lng to detect actual position changes (vs camera movement)
   final Map<String, LatLng> _previousBusPositions = {};
@@ -576,57 +582,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     return null;
   }
 
-  /// Build the bus overlay widgets for the Stack.
-  /// If [trackedPlate] is provided, that bus will be highlighted.
-  List<Widget> _buildBusOverlays(
-    Map<String, List<ActiveBus>> busMap, {
-    String? trackedPlate,
-    String? trackedRouteCode,
-  }) {
-    final overlays = <Widget>[];
-
-    for (final entry in busMap.entries) {
-      final routeCode = entry.key;
-      // Filter to selected route if one is active (explore mode)
-      // OR filter to tracked route if tracking a bus (route preview mode)
-      if (_selectedRoute != null && routeCode != _selectedRoute) continue;
-      if (trackedRouteCode != null && routeCode != trackedRouteCode) continue;
-
-      final color = RouteBadge.colorForRoute(routeCode);
-
-      for (final bus in entry.value) {
-        final screenPos = _busScreenPositions[bus.vehPlate];
-        if (screenPos == null) continue; // Position not yet calculated
-
-        // Mark as selected if explicitly selected OR if it's the tracked bus
-        final isSelected =
-            _selectedBusPlate == bus.vehPlate || bus.vehPlate == trackedPlate;
-        final occ = bus.loadInfo?.occupancy ?? 0;
-
-        // Only animate when bus lat/lng actually changed from API data
-        final shouldAnimate = _busesWithPositionChange.contains(bus.vehPlate);
-
-        overlays.add(
-          BusOverlayMarker(
-            key: ValueKey('bus_overlay_${bus.vehPlate}'),
-            screenX: screenPos.dx,
-            screenY: screenPos.dy,
-            occupancy: occ,
-            direction: bus.direction,
-            routeColor: color,
-            isSelected: isSelected,
-            plate: bus.vehPlate,
-            speed: bus.speed,
-            shouldAnimate: shouldAnimate,
-            onTap: () => _selectBus(routeCode, bus),
-          ),
-        );
-      }
-    }
-
-    return overlays;
-  }
-
   /// Build highlighted stop overlay (appears above bus markers)
   Widget? _buildHighlightedStopOverlay() {
     final stopCode = _highlightedStop ?? _selectedStop;
@@ -696,80 +651,70 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       return _buildRoutePreviewPolylines(navState.route!);
     }
 
-    // Explore mode: show selected route
-    if (_selectedRoute == null) return {};
-    final checkpoints = ref.watch(checkpointsProvider(_selectedRoute!));
-    return checkpoints.when(
-      data: (points) {
-        if (points.isEmpty) return <Polyline>{};
-        final color = RouteBadge.colorForRoute(_selectedRoute!);
-        final allLatLngs = points
-            .map((p) => LatLng(p.latitude, p.longitude))
-            .toList();
+    // Explore mode: show selected route (uses cached checkpoint data)
+    if (_selectedRoute == null || _routeCheckpointLatLngs.isEmpty) return {};
+    final color = RouteBadge.colorForRoute(_selectedRoute!);
+    final allLatLngs = _routeCheckpointLatLngs;
 
-        final progress = _routeProgress;
-        if (progress >= 1.0) {
-          return {
-            Polyline(
-              polylineId: PolylineId('route_$_selectedRoute'),
-              points: allLatLngs,
-              color: color,
-              width: 5,
-            ),
-          };
-        }
+    final progress = _routeProgress;
+    if (progress >= 1.0) {
+      return {
+        Polyline(
+          polylineId: PolylineId('route_$_selectedRoute'),
+          points: allLatLngs,
+          color: color,
+          width: 5,
+        ),
+      };
+    }
 
-        // Find nearest checkpoint to user
-        final userLat = _lastPosition?.latitude ?? AppConstants.nusLatitude;
-        final userLng = _lastPosition?.longitude ?? AppConstants.nusLongitude;
-        int nearestIdx = 0;
-        double minDist = double.infinity;
-        for (int i = 0; i < allLatLngs.length; i++) {
-          final d = _haversineDist(
-            userLat,
-            userLng,
-            allLatLngs[i].latitude,
-            allLatLngs[i].longitude,
-          );
-          if (d < minDist) {
-            minDist = d;
-            nearestIdx = i;
-          }
-        }
+    // Find nearest checkpoint to user
+    final userLat = _lastPosition?.latitude ?? AppConstants.nusLatitude;
+    final userLng = _lastPosition?.longitude ?? AppConstants.nusLongitude;
+    int nearestIdx = 0;
+    double minDist = double.infinity;
+    for (int i = 0; i < allLatLngs.length; i++) {
+      final d = _haversineDist(
+        userLat,
+        userLng,
+        allLatLngs[i].latitude,
+        allLatLngs[i].longitude,
+      );
+      if (d < minDist) {
+        minDist = d;
+        nearestIdx = i;
+      }
+    }
 
-        // Two arms growing from nearest: forward and backward
-        final n = allLatLngs.length;
-        final forwardCount = ((n - nearestIdx) * progress).ceil().clamp(
-          1,
-          n - nearestIdx,
-        );
-        final backwardCount = ((nearestIdx + 1) * progress).ceil().clamp(
-          1,
-          nearestIdx + 1,
-        );
-
-        final startIdx = nearestIdx - (backwardCount - 1);
-        final endIdx = nearestIdx + forwardCount;
-
-        final visiblePoints = allLatLngs.sublist(
-          startIdx.clamp(0, n),
-          endIdx.clamp(0, n),
-        );
-
-        if (visiblePoints.length < 2) return {};
-
-        return {
-          Polyline(
-            polylineId: PolylineId('route_$_selectedRoute'),
-            points: visiblePoints,
-            color: color,
-            width: 5,
-          ),
-        };
-      },
-      loading: () => <Polyline>{},
-      error: (error, stackTrace) => <Polyline>{},
+    // Two arms growing from nearest: forward and backward
+    final n = allLatLngs.length;
+    final forwardCount = ((n - nearestIdx) * progress).ceil().clamp(
+      1,
+      n - nearestIdx,
     );
+    final backwardCount = ((nearestIdx + 1) * progress).ceil().clamp(
+      1,
+      nearestIdx + 1,
+    );
+
+    final startIdx = nearestIdx - (backwardCount - 1);
+    final endIdx = nearestIdx + forwardCount;
+
+    final visiblePoints = allLatLngs.sublist(
+      startIdx.clamp(0, n),
+      endIdx.clamp(0, n),
+    );
+
+    if (visiblePoints.length < 2) return {};
+
+    return {
+      Polyline(
+        polylineId: PolylineId('route_$_selectedRoute'),
+        points: visiblePoints,
+        color: color,
+        width: 5,
+      ),
+    };
   }
 
   Set<Polyline> _buildRoutePreviewPolylines(RoutePlanResult route) {
@@ -927,14 +872,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   Set<Marker> _buildMarkers(NavigationState navState) {
-    // Trigger bus position recalculation when bus data updates (all modes)
-    final allBuses = ref.watch(allActiveBusesProvider);
-    allBuses.whenData((busMap) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _updateBusScreenPositions(animate: true);
-      });
-    });
-
     if (navState.destination != null || navState.route != null) {
       return _buildRouteContextMarkers(navState);
     }
@@ -1174,6 +1111,36 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+      _resumeLocationStream();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      _positionStreamSubscription?.cancel();
+      _positionStreamSubscription = null;
+    }
+  }
+
+  void _resumeLocationStream() {
+    if (_positionStreamSubscription != null) return;
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((position) {
+          if (!mounted) return;
+          setState(() => _streamPosition = position);
+          _updateLocationScreenPosition();
+        });
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
@@ -1185,10 +1152,66 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     super.dispose();
   }
 
+  // --------------- Helpers for sub-widgets ---------------
+
+  String? _getFirstBusLegRouteCode(NavigationState navState) {
+    if (navState.route == null) return null;
+    for (final leg in navState.route!.legs) {
+      if (leg.isBus) return leg.routeCode;
+    }
+    return null;
+  }
+
+  Future<void> _handleRecenter() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+      );
+    } catch (_) {}
+  }
+
+  void _handleCenterMap(double lat, double lng, String stopCode) {
+    _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(lat, lng)));
+    _flashHighlightStop(stopCode);
+  }
+
+  void _handleStopsBusSelected(String route, String plate) {
+    final allBuses = ref.read(allActiveBusesProvider).valueOrNull;
+    if (allBuses == null) return;
+    final buses = allBuses[route] ?? [];
+    final bus = buses.cast<ActiveBus?>().firstWhere(
+      (b) => b!.vehPlate == plate,
+      orElse: () => null,
+    );
+    if (bus != null) _selectBus(route, bus);
+  }
+
+  void _handleLinesBusSelected(String route, String plate) {
+    final allBuses = ref.read(allActiveBusesProvider).valueOrNull;
+    if (allBuses == null) return;
+    final buses = allBuses[route] ?? [];
+    final bus = buses.cast<ActiveBus?>().firstWhere(
+      (b) => b!.vehPlate == plate,
+      orElse: () => null,
+    );
+    if (bus == null) return;
+    if (_selectedBusPlate == plate) {
+      setState(() => _selectedBusPlate = null);
+    } else {
+      _selectBus(route, bus);
+    }
+  }
+
   // --------------- Build ---------------
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final lat = _lastPosition?.latitude ?? AppConstants.nusLatitude;
     final lng = _lastPosition?.longitude ?? AppConstants.nusLongitude;
     final allSortedStops = ref.watch(
@@ -1206,7 +1229,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
     // Watch navigation state to react to destination/route selection
     final navState = ref.watch(navigationStateProvider);
-    final hasDestination = navState.destination != null;
 
     // Listen for pending stop selection from Saved tab (or other screens)
     ref.listen<String?>(pendingStopSelectionProvider, (previous, next) {
@@ -1217,6 +1239,36 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
         _selectStop(next);
       }
     });
+
+    // Listen for bus data changes and update screen positions
+    // (moved out of _buildMarkers to avoid side effects during build)
+    ref.listen(allActiveBusesProvider, (_, next) {
+      next.whenData((_) {
+        _updateBusScreenPositions(animate: true);
+      });
+    });
+
+    // Cache checkpoint data for selected route polylines (explore mode)
+    if (_selectedRoute != null && navState.route == null) {
+      ref.listen(checkpointsProvider(_selectedRoute!), (_, next) {
+        next.whenData((points) {
+          setState(() {
+            _routeCheckpointLatLngs = points
+                .map((p) => LatLng(p.latitude, p.longitude))
+                .toList();
+          });
+        });
+      });
+      // Eagerly read already-available data (e.g. cached from previous selection)
+      final cpVal = ref.read(checkpointsProvider(_selectedRoute!));
+      cpVal.whenData((points) {
+        _routeCheckpointLatLngs = points
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+      });
+    } else {
+      _routeCheckpointLatLngs = [];
+    }
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -1290,42 +1342,20 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
           ),
 
           // GPU-accelerated bus marker overlay layer
-          // In explore mode: show all buses (filtered by selected route if any)
-          // In route preview mode: show only the tracked bus for the first bus leg
-          Builder(
-            builder: (context) {
-              if (navState.route != null) {
-                // Route preview mode: find and highlight the tracked bus
-                final trackedPlate = _getTrackedBusPlate(navState);
-                if (trackedPlate == null) return const SizedBox.shrink();
-
-                // Find the route code for the first bus leg
-                String? trackedRouteCode;
-                for (final leg in navState.route!.legs) {
-                  if (leg.isBus) {
-                    trackedRouteCode = leg.routeCode;
-                    break;
-                  }
-                }
-
-                return IgnorePointer(
-                  ignoring: true, // Non-interactive in route preview
-                  child: Stack(
-                    children: _buildBusOverlays(
-                      busMap,
-                      trackedPlate: trackedPlate,
-                      trackedRouteCode: trackedRouteCode,
-                    ),
-                  ),
-                );
-              } else {
-                // Explore mode: show all buses normally
-                return IgnorePointer(
-                  ignoring: false,
-                  child: Stack(children: _buildBusOverlays(busMap)),
-                );
-              }
-            },
+          _BusOverlays(
+            busMap: busMap,
+            isRoutePreview: navState.route != null,
+            trackedPlate: navState.route != null
+                ? _getTrackedBusPlate(navState)
+                : null,
+            trackedRouteCode: navState.route != null
+                ? _getFirstBusLegRouteCode(navState)
+                : null,
+            selectedRoute: _selectedRoute,
+            selectedBusPlate: _selectedBusPlate,
+            busScreenPositions: _busScreenPositions,
+            busesWithPositionChange: _busesWithPositionChange,
+            onBusTap: _selectBus,
           ),
 
           // Custom location marker with compass heading (below bus markers)
@@ -1351,111 +1381,22 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               top: MediaQuery.of(context).padding.top + 12,
               left: 16,
               right: 16,
-              child: AnimatedSwitcherDefaults(
-                duration: const Duration(milliseconds: 250),
-                child: _selectedRoute != null
-                    ? Builder(
-                        builder: (context) {
-                          final colors = context.nusColors;
-                          return Container(
-                            key: const ValueKey('route_banner'),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                RouteBadge(
-                                  routeCode: _selectedRoute!,
-                                  fontSize: 13,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Route $_selectedRoute',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: colors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                _buildBusCount(),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: _clearRoute,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: colors.background,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 18,
-                                      color: colors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      )
-                    : hasDestination
-                    ? _buildDestinationPreview(navState.destination!)
-                    : SearchDropdown(
-                        key: const ValueKey('search_bar'),
-                        userPosition: _lastPosition,
-                        onDestinationSelected: _onDestinationSelected,
-                      ),
+              child: _RouteBanner(
+                selectedRoute: _selectedRoute,
+                destination: navState.destination,
+                lastPosition: _lastPosition,
+                activeBuses: allBuses,
+                onClearRoute: _clearRoute,
+                onDestinationSelected: _onDestinationSelected,
+                onCancelNavigation: () {
+                  ref.read(navigationStateProvider.notifier).cancelNavigation();
+                },
               ),
             ),
 
           // My location button — hide when route detail is shown
           if (navState.route == null)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 150),
-              curve: Curves.easeOut,
-              right: 16,
-              bottom: _panelHeight + 16,
-              child: Builder(
-                builder: (context) {
-                  final colors = context.nusColors;
-                  return FloatingActionButton.small(
-                    heroTag: 'myLocation',
-                    backgroundColor: colors.surface,
-                    onPressed: () async {
-                      try {
-                        final pos = await Geolocator.getCurrentPosition();
-                        if (!mounted) return;
-                        _mapController?.animateCamera(
-                          CameraUpdate.newLatLng(
-                            LatLng(pos.latitude, pos.longitude),
-                          ),
-                        );
-                      } catch (_) {}
-                    },
-                    child: Icon(
-                      Icons.my_location,
-                      color: colors.primary,
-                      size: 22,
-                    ),
-                  );
-                },
-              ),
-            ),
+            _MapFABs(panelHeight: _panelHeight, onRecenter: _handleRecenter),
 
           // Bottom panel (fixed height) — hide when route is selected
           // Wrap with MediaQuery.removeViewInsets to ignore keyboard
@@ -1468,31 +1409,25 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               child: MediaQuery.removeViewInsets(
                 context: context,
                 removeBottom: true,
-                child: Builder(
-                  builder: (context) {
-                    final colors = context.nusColors;
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: colors.surface,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, -2),
-                          ),
-                        ],
-                      ),
-                      child: _buildBottomPanelContent(
-                        navState,
-                        allSortedStops,
-                        lat,
-                        lng,
-                      ),
-                    );
-                  },
+                child: _BottomPanel(
+                  navState: navState,
+                  allSortedStops: allSortedStops,
+                  userLat: lat,
+                  userLng: lng,
+                  tabController: _tabController,
+                  selectedStop: _selectedStop,
+                  selectedRoute: _selectedRoute,
+                  selectedBusPlate: _selectedBusPlate,
+                  highlightedStop: _highlightedStop,
+                  scrollToSelection: _scrollToSelection,
+                  lastPosition: _lastPosition,
+                  onStopSelected: (name) => _selectStop(name),
+                  onStopLocate: _locateStop,
+                  onRouteSelected: (route) => _selectRoute(route),
+                  onCenterMap: _handleCenterMap,
+                  onStopsBusSelected: _handleStopsBusSelected,
+                  onLinesBusSelected: _handleLinesBusSelected,
+                  onRetryStops: () => ref.invalidate(stopsProvider),
                 ),
               ),
             ),
@@ -1517,174 +1452,411 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
       ),
     );
   }
+}
 
-  /// Builds the destination preview banner shown when a destination is selected.
-  Widget _buildDestinationPreview(Building destination) {
-    return Builder(
-      builder: (context) {
-        final colors = context.nusColors;
-        return Container(
-          key: const ValueKey('destination_preview'),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+// --------------- Extracted Sub-Widgets ---------------
+
+/// GPU-accelerated bus marker overlay layer.
+/// Renders bus position markers on the map — one of the hottest re-rendering paths.
+class _BusOverlays extends StatelessWidget {
+  const _BusOverlays({
+    required this.busMap,
+    required this.isRoutePreview,
+    this.trackedPlate,
+    this.trackedRouteCode,
+    this.selectedRoute,
+    this.selectedBusPlate,
+    required this.busScreenPositions,
+    required this.busesWithPositionChange,
+    required this.onBusTap,
+  });
+
+  final Map<String, List<ActiveBus>> busMap;
+  final bool isRoutePreview;
+  final String? trackedPlate;
+  final String? trackedRouteCode;
+  final String? selectedRoute;
+  final String? selectedBusPlate;
+  final Map<String, Offset> busScreenPositions;
+  final Set<String> busesWithPositionChange;
+  final void Function(String routeCode, ActiveBus bus) onBusTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isRoutePreview) {
+      if (trackedPlate == null) return const SizedBox.shrink();
+      return IgnorePointer(
+        ignoring: true,
+        child: Stack(
+          children: _buildOverlays(
+            filterRouteCode: trackedRouteCode,
+            highlightPlate: trackedPlate,
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: colors.infoBg,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.location_on, color: colors.primary, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      destination.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Destination',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colors.textSecondary.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  ref.read(navigationStateProvider.notifier).cancelNavigation();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: colors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.close,
-                    size: 18,
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+        ),
+      );
+    }
+    return IgnorePointer(
+      ignoring: false,
+      child: Stack(children: _buildOverlays()),
     );
   }
 
-  /// Builds the bottom panel content based on navigation state.
-  /// Shows RouteSuggestionsPanel when in routePreview with a destination,
-  /// otherwise shows the normal stops/lines tabs.
-  Widget _buildBottomPanelContent(
-    NavigationState navState,
-    AsyncValue<List<NearbyStopResult>> allSortedStops,
-    double lat,
-    double lng,
-  ) {
-    // Show route suggestions panel when destination is selected
+  List<Widget> _buildOverlays({
+    String? filterRouteCode,
+    String? highlightPlate,
+  }) {
+    final overlays = <Widget>[];
+
+    for (final entry in busMap.entries) {
+      final routeCode = entry.key;
+      if (selectedRoute != null && routeCode != selectedRoute) continue;
+      if (filterRouteCode != null && routeCode != filterRouteCode) continue;
+
+      final color = RouteBadge.colorForRoute(routeCode);
+
+      for (final bus in entry.value) {
+        final screenPos = busScreenPositions[bus.vehPlate];
+        if (screenPos == null) continue;
+
+        final isSelected =
+            selectedBusPlate == bus.vehPlate || bus.vehPlate == highlightPlate;
+
+        overlays.add(
+          BusOverlayMarker(
+            key: ValueKey('bus_overlay_${bus.vehPlate}'),
+            screenX: screenPos.dx,
+            screenY: screenPos.dy,
+            occupancy: bus.loadInfo?.occupancy ?? 0,
+            direction: bus.direction,
+            routeColor: color,
+            isSelected: isSelected,
+            plate: bus.vehPlate,
+            speed: bus.speed,
+            shouldAnimate: busesWithPositionChange.contains(bus.vehPlate),
+            onTap: () => onBusTap(routeCode, bus),
+          ),
+        );
+      }
+    }
+
+    return overlays;
+  }
+}
+
+/// Route info banner, destination preview, or search bar at the top of the map.
+class _RouteBanner extends StatelessWidget {
+  const _RouteBanner({
+    this.selectedRoute,
+    this.destination,
+    this.lastPosition,
+    required this.activeBuses,
+    required this.onClearRoute,
+    required this.onDestinationSelected,
+    required this.onCancelNavigation,
+  });
+
+  final String? selectedRoute;
+  final Building? destination;
+  final Position? lastPosition;
+  final AsyncValue<Map<String, List<ActiveBus>>> activeBuses;
+  final VoidCallback onClearRoute;
+  final VoidCallback onDestinationSelected;
+  final VoidCallback onCancelNavigation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcherDefaults(
+      duration: const Duration(milliseconds: 250),
+      child: selectedRoute != null
+          ? _buildRouteBanner(context)
+          : destination != null
+          ? _buildDestinationPreview(context, destination!)
+          : SearchDropdown(
+              key: const ValueKey('search_bar'),
+              userPosition: lastPosition,
+              onDestinationSelected: onDestinationSelected,
+            ),
+    );
+  }
+
+  Widget _buildRouteBanner(BuildContext context) {
+    final colors = context.nusColors;
+    return Container(
+      key: const ValueKey('route_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          RouteBadge(routeCode: selectedRoute!, fontSize: 13),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Route $selectedRoute',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          _buildBusCount(context),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onClearRoute,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: colors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.close, size: 18, color: colors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBusCount(BuildContext context) {
+    if (selectedRoute == null) return const SizedBox.shrink();
+    final colors = context.nusColors;
+    return activeBuses.when(
+      skipLoadingOnReload: true,
+      data: (busMap) {
+        final list = busMap[selectedRoute] ?? [];
+        return AnimatedSwitcherDefaults(
+          child: Container(
+            key: ValueKey(list.length),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: colors.successBg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${list.length} bus${list.length != 1 ? 'es' : ''}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colors.success,
+              ),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildDestinationPreview(BuildContext context, Building destination) {
+    final colors = context.nusColors;
+    return Container(
+      key: const ValueKey('destination_preview'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colors.infoBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.location_on, color: colors.primary, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  destination.name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Destination',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.textSecondary.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onCancelNavigation,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: colors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.close, size: 18, color: colors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// My-location floating action button.
+class _MapFABs extends StatelessWidget {
+  const _MapFABs({required this.panelHeight, required this.onRecenter});
+
+  final double panelHeight;
+  final Future<void> Function() onRecenter;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.nusColors;
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      right: 16,
+      bottom: panelHeight + 16,
+      child: FloatingActionButton.small(
+        heroTag: 'myLocation',
+        backgroundColor: colors.surface,
+        onPressed: onRecenter,
+        child: Icon(Icons.my_location, color: colors.primary, size: 22),
+      ),
+    );
+  }
+}
+
+/// Bottom panel showing stops/lines tabs or route suggestions.
+class _BottomPanel extends StatelessWidget {
+  const _BottomPanel({
+    required this.navState,
+    required this.allSortedStops,
+    required this.userLat,
+    required this.userLng,
+    required this.tabController,
+    this.selectedStop,
+    this.selectedRoute,
+    this.selectedBusPlate,
+    this.highlightedStop,
+    required this.scrollToSelection,
+    this.lastPosition,
+    required this.onStopSelected,
+    required this.onStopLocate,
+    required this.onRouteSelected,
+    required this.onCenterMap,
+    required this.onStopsBusSelected,
+    required this.onLinesBusSelected,
+    required this.onRetryStops,
+  });
+
+  final NavigationState navState;
+  final AsyncValue<List<NearbyStopResult>> allSortedStops;
+  final double userLat;
+  final double userLng;
+  final TabController tabController;
+  final String? selectedStop;
+  final String? selectedRoute;
+  final String? selectedBusPlate;
+  final String? highlightedStop;
+  final bool scrollToSelection;
+  final Position? lastPosition;
+  final void Function(String) onStopSelected;
+  final void Function(String) onStopLocate;
+  final void Function(String) onRouteSelected;
+  final void Function(double, double, String) onCenterMap;
+  final void Function(String, String) onStopsBusSelected;
+  final void Function(String, String) onLinesBusSelected;
+  final VoidCallback onRetryStops;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.nusColors;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     if (navState.status == NavigationStatus.routePreview &&
         navState.destination != null) {
       return RouteSuggestionsPanel(
         destination: navState.destination!,
-        userPosition: _lastPosition,
+        userPosition: lastPosition,
       );
     }
 
-    // Default: show stops/lines tabs
     return Column(
       children: [
-        _buildTabBar(),
+        _buildTabBar(context),
         Expanded(
           child: allSortedStops.when(
             skipLoadingOnReload: true,
             data: (stops) => TabBarView(
-              controller: _tabController,
+              controller: tabController,
               children: [
                 StopsTab(
                   stops: stops,
-                  selectedStop: _selectedStop,
-                  selectedRoute: _selectedRoute,
-                  onStopSelected: (name) => _selectStop(name),
-                  onStopLocate: (name) => _locateStop(name),
-                  onRouteSelected: (route) => _selectRoute(route),
-                  onCenterMap: (stopLat, stopLng, stopCode) {
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLng(LatLng(stopLat, stopLng)),
-                    );
-                    _flashHighlightStop(stopCode);
-                  },
-                  onBusSelected: (route, plate) {
-                    final allBuses = ref
-                        .read(allActiveBusesProvider)
-                        .valueOrNull;
-                    if (allBuses == null) return;
-                    final buses = allBuses[route] ?? [];
-                    final bus = buses.cast<ActiveBus?>().firstWhere(
-                      (b) => b!.vehPlate == plate,
-                      orElse: () => null,
-                    );
-                    if (bus != null) _selectBus(route, bus);
-                  },
+                  selectedStop: selectedStop,
+                  selectedRoute: selectedRoute,
+                  onStopSelected: onStopSelected,
+                  onStopLocate: onStopLocate,
+                  onRouteSelected: onRouteSelected,
+                  onCenterMap: onCenterMap,
+                  onBusSelected: onStopsBusSelected,
                 ),
                 LinesTab(
-                  userLat: lat,
-                  userLng: lng,
-                  selectedRoute: _selectedRoute,
-                  selectedBusPlate: _selectedBusPlate,
-                  highlightedStopCode: _highlightedStop,
-                  shouldScrollToSelection: _scrollToSelection,
-                  onRouteSelected: (route) => _selectRoute(route),
-                  onCenterMap: (stopLat, stopLng, stopCode) {
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLng(LatLng(stopLat, stopLng)),
-                    );
-                    _flashHighlightStop(stopCode);
-                  },
-                  onBusSelected: (route, plate) {
-                    final allBuses = ref
-                        .read(allActiveBusesProvider)
-                        .valueOrNull;
-                    if (allBuses == null) return;
-                    final buses = allBuses[route] ?? [];
-                    final bus = buses.cast<ActiveBus?>().firstWhere(
-                      (b) => b!.vehPlate == plate,
-                      orElse: () => null,
-                    );
-                    if (bus == null) return;
-                    // In Lines detail: deselecting a bus keeps the route polyline
-                    if (_selectedBusPlate == plate) {
-                      setState(() => _selectedBusPlate = null);
-                    } else {
-                      _selectBus(route, bus);
-                    }
-                  },
+                  userLat: userLat,
+                  userLng: userLng,
+                  selectedRoute: selectedRoute,
+                  selectedBusPlate: selectedBusPlate,
+                  highlightedStopCode: highlightedStop,
+                  shouldScrollToSelection: scrollToSelection,
+                  onRouteSelected: onRouteSelected,
+                  onCenterMap: onCenterMap,
+                  onBusSelected: onLinesBusSelected,
                 ),
               ],
             ),
@@ -1696,7 +1868,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               padding: const EdgeInsets.all(20),
               child: ErrorCard(
                 message: error.toString(),
-                onRetry: () => ref.invalidate(stopsProvider),
+                onRetry: onRetryStops,
               ),
             ),
           ),
@@ -1705,14 +1877,14 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(BuildContext context) {
     final colors = context.nusColors;
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.borderLight)),
       ),
       child: TabBar(
-        controller: _tabController,
+        controller: tabController,
         labelColor: colors.primary,
         unselectedLabelColor: colors.textMuted,
         labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -1749,42 +1921,6 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildBusCount() {
-    if (_selectedRoute == null) return const SizedBox.shrink();
-    final allBuses = ref.watch(allActiveBusesProvider);
-    final colors = context.nusColors;
-    return allBuses.when(
-      skipLoadingOnReload: true,
-      data: (busMap) {
-        final list = busMap[_selectedRoute] ?? [];
-        return AnimatedSwitcherDefaults(
-          child: Container(
-            key: ValueKey(list.length),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: colors.successBg,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${list.length} bus${list.length != 1 ? 'es' : ''}',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: colors.success,
-              ),
-            ),
-          ),
-        );
-      },
-      loading: () => const SizedBox(
-        width: 14,
-        height: 14,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
-      error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
 }

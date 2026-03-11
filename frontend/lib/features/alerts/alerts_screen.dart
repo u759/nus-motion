@@ -21,18 +21,23 @@ class AlertsScreen extends ConsumerStatefulWidget {
 }
 
 class _AlertsScreenState extends ConsumerState<AlertsScreen>
-    with SingleTickerProviderStateMixin {
+    with
+        SingleTickerProviderStateMixin,
+        WidgetsBindingObserver,
+        AutomaticKeepAliveClientMixin {
   late TabController _tabController;
   Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 3, vsync: this);
     _startPolling();
   }
 
   void _startPolling() {
+    _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
       ref.invalidate(announcementsProvider);
@@ -41,14 +46,31 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final announcements = ref.watch(announcementsProvider);
     final tickerTapes = ref.watch(tickerTapesProvider);
     final weather = ref.watch(
@@ -157,164 +179,239 @@ class _AlertsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    final colors = context.nusColors;
+
+    // Pre-compute filtered announcements data for builder use
+    final List<Announcement> current;
+    final List<Announcement> past;
+    final bool announcementsLoading;
+    final bool announcementsError;
+
+    if (announcements case AsyncData(value: final items)) {
+      var filtered = items;
+      if (filter == 'service') {
+        filtered = items.where((a) {
+          final t = a.text.toLowerCase();
+          return t.contains('delay') ||
+              t.contains('suspend') ||
+              t.contains('service') ||
+              t.contains('disruption') ||
+              t.contains('cancelled');
+        }).toList();
+      } else if (filter == 'maintenance') {
+        filtered = items.where((a) {
+          final t = a.text.toLowerCase();
+          return t.contains('maintenance') ||
+              t.contains('road') ||
+              t.contains('construction') ||
+              t.contains('repair') ||
+              t.contains('upgrade');
+        }).toList();
+      }
+      current = filtered
+          .where((a) => a.status.toLowerCase() != 'resolved')
+          .toList();
+      past = filtered
+          .where((a) => a.status.toLowerCase() == 'resolved')
+          .toList();
+      announcementsLoading = false;
+      announcementsError = false;
+    } else if (announcements is AsyncLoading) {
+      current = [];
+      past = [];
+      announcementsLoading = true;
+      announcementsError = false;
+    } else {
+      current = [];
+      past = [];
+      announcementsLoading = false;
+      announcementsError = true;
+    }
+
+    // Pre-compute ticker tapes for builder use
+    final List<TickerTape> tapes;
+    if (filter == null) {
+      tapes = switch (tickerTapes) {
+        AsyncData(value: final t) => t,
+        _ => <TickerTape>[],
+      };
+    } else {
+      tapes = [];
+    }
+
+    return CustomScrollView(
+      slivers: [
         // Weather card (only on All tab)
         if (filter == null)
-          weather.when(
-            data: (w) => WeatherCard(weather: w),
-            loading: () => const LoadingShimmer(height: 80),
-            error: (_, __) => const SizedBox.shrink(),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: weather.when(
+                data: (w) => WeatherCard(weather: w),
+                loading: () => const LoadingShimmer(height: 80),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+            ),
           ),
-        if (filter == null) const SizedBox(height: 16),
+        if (filter == null)
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-        // Live updates (ticker tapes) — right under weather, only on All tab
-        tickerTapes.when(
-          data: (tapes) {
-            if (tapes.isEmpty || filter != null) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Live Updates',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: context.nusColors.textSecondary,
-                  ),
+        // Live Updates header + ticker cards
+        if (tapes.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Live Updates',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textSecondary,
                 ),
-                const SizedBox(height: 12),
-                ...tapes.map((t) => _TickerCard(key: ValueKey(t.id), tape: t)),
-                const SizedBox(height: 16),
-              ],
-            );
-          },
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-        ),
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: tapes.length,
+              itemBuilder: (context, i) =>
+                  _TickerCard(key: ValueKey(tapes[i].id), tape: tapes[i]),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        ],
 
-        // Current Alerts
-        announcements.when(
-          data: (items) {
-            var filtered = items;
-            if (filter == 'service') {
-              // Service updates: delays, suspensions, disruptions
-              filtered = items.where((a) {
-                final t = a.text.toLowerCase();
-                return t.contains('delay') ||
-                    t.contains('suspend') ||
-                    t.contains('service') ||
-                    t.contains('disruption') ||
-                    t.contains('cancelled');
-              }).toList();
-            } else if (filter == 'maintenance') {
-              // Maintenance: construction, road works, scheduled works
-              filtered = items.where((a) {
-                final t = a.text.toLowerCase();
-                return t.contains('maintenance') ||
-                    t.contains('road') ||
-                    t.contains('construction') ||
-                    t.contains('repair') ||
-                    t.contains('upgrade');
-              }).toList();
-            }
+        // Announcements: loading state
+        if (announcementsLoading)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: ShimmerList(itemCount: 3, itemHeight: 90),
+            ),
+          ),
 
-            final current = filtered
-                .where((a) => a.status.toLowerCase() != 'resolved')
-                .toList();
-            final past = filtered
-                .where((a) => a.status.toLowerCase() == 'resolved')
-                .toList();
+        // Announcements: error state
+        if (announcementsError)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ErrorCard(
+                message: 'Failed to load alerts',
+                onRetry: onRetryAnnouncements,
+              ),
+            ),
+          ),
 
-            if (current.isEmpty && past.isEmpty) {
-              return const EmptyState(
+        // Announcements: empty state
+        if (!announcementsLoading &&
+            !announcementsError &&
+            current.isEmpty &&
+            past.isEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: EmptyState(
                 icon: Icons.check_circle_outline,
                 title: 'No alerts',
                 subtitle: 'All services running normally',
-              );
-            }
+              ),
+            ),
+          ),
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (current.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      Text(
-                        'Current',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: context.nusColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.nusColors.primary,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${current.length} new',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ...current.asMap().entries.map(
-                    (e) => StaggeredListItem(
-                      key: ValueKey(e.value.id),
-                      index: e.key,
-                      child: AlertCard(announcement: e.value),
-                    ),
-                  ),
-                ],
-                if (past.isNotEmpty) ...[
-                  const SizedBox(height: 24),
+        // Current section header
+        if (current.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
                   Text(
-                    'Past',
+                    'Current',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: context.nusColors.textSecondary,
+                      color: colors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  ...past.asMap().entries.map(
-                    (e) => StaggeredListItem(
-                      key: ValueKey(e.value.id),
-                      index: e.key + current.length,
-                      child: Opacity(
-                        opacity: 0.6,
-                        child: AlertCard(
-                          announcement: e.value,
-                          isResolved: true,
-                        ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${current.length} new',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
                   ),
                 ],
-              ],
-            );
-          },
-          loading: () => const ShimmerList(itemCount: 3, itemHeight: 90),
-          error: (error, _) => ErrorCard(
-            message: 'Failed to load alerts',
-            onRetry: onRetryAnnouncements,
+              ),
+            ),
           ),
-        ),
+        if (current.isNotEmpty)
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-        const SizedBox(height: 24),
+        // Current alerts list (builder)
+        if (current.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: current.length,
+              itemBuilder: (context, i) => StaggeredListItem(
+                key: ValueKey(current[i].id),
+                index: i,
+                child: AlertCard(announcement: current[i]),
+              ),
+            ),
+          ),
+
+        // Past section header
+        if (past.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Past',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        ],
+
+        // Past alerts list (builder)
+        if (past.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList.builder(
+              itemCount: past.length,
+              itemBuilder: (context, i) => StaggeredListItem(
+                key: ValueKey(past[i].id),
+                index: i + current.length,
+                child: Opacity(
+                  opacity: 0.6,
+                  child: AlertCard(announcement: past[i], isResolved: true),
+                ),
+              ),
+            ),
+          ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
     );
   }

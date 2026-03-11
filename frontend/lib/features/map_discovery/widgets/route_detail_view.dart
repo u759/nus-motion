@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -37,7 +36,6 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
-  Timer? _refreshTimer;
 
   /// Tracks which bus leg indices are currently expanded to show stops.
   final Set<int> _expandedLegs = {};
@@ -65,29 +63,6 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     );
     _animController.forward();
     widget.onRouteFocusRequested?.call();
-    _startRefreshTimer();
-  }
-
-  void _startRefreshTimer() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted) {
-        _refreshRouteData();
-      }
-    });
-  }
-
-  void _refreshRouteData() {
-    final navState = ref.read(navigationStateProvider);
-    if (navState.destination == null) return;
-
-    // Build query params using user position
-    final from = widget.userPosition != null
-        ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
-        : 'Current Location';
-    final to = navState.destination!.name;
-
-    // Invalidate to trigger fresh fetch
-    ref.invalidate(routeProvider((from: from, to: to)));
   }
 
   @override
@@ -100,7 +75,6 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }

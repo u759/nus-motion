@@ -24,6 +24,7 @@ class NusMotionApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'NUS Motion',
       debugShowCheckedModeBanner: false,
+      restorationScopeId: 'app',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: toFlutterThemeMode(appThemeMode),

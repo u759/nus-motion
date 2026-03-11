@@ -68,7 +68,10 @@ class AppDarkColors {
 }
 
 class AppTheme {
-  static ThemeData get light {
+  static final ThemeData light = _buildLight();
+  static final ThemeData dark = _buildDark();
+
+  static ThemeData _buildLight() {
     final baseText = GoogleFonts.dmSansTextTheme();
     final displayText = GoogleFonts.spaceGroteskTextTheme();
 
@@ -138,7 +141,7 @@ class AppTheme {
     );
   }
 
-  static ThemeData get dark {
+  static ThemeData _buildDark() {
     final baseText = GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme);
     final displayText = GoogleFonts.spaceGroteskTextTheme(
       ThemeData.dark().textTheme,

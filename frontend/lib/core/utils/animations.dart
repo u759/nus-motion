@@ -49,7 +49,16 @@ class _FadeSlideInState extends State<FadeSlideIn>
     if (_skip) {
       _controller.value = 1.0; // already seen → show immediately
     } else {
-      if (key != null) FadeSlideIn._animated.add(key);
+      if (key != null) {
+        FadeSlideIn._animated.add(key);
+        // Prevent unbounded growth: trim oldest half when exceeding 500.
+        if (FadeSlideIn._animated.length > 500) {
+          final toRemove = FadeSlideIn._animated
+              .take(FadeSlideIn._animated.length ~/ 2)
+              .toList();
+          FadeSlideIn._animated.removeAll(toRemove);
+        }
+      }
       if (widget.delay == Duration.zero) {
         _controller.forward();
       } else {

@@ -44,6 +44,12 @@ class _LinesTabState extends ConsumerState<LinesTab> {
   final _itemKeys = <String, GlobalKey>{};
   String? _openedRoute;
 
+  // Proximity sort cache — only recompute on >50m movement or route list change
+  List<ServiceDescription>? _cachedSorted;
+  double _lastSortLat = 0;
+  double _lastSortLng = 0;
+  int _lastRouteCount = 0;
+
   GlobalKey _keyFor(String route) =>
       _itemKeys.putIfAbsent(route, () => GlobalKey());
 
@@ -159,9 +165,16 @@ class _LinesTabState extends ConsumerState<LinesTab> {
   }
 
   List<ServiceDescription> _sortByProximity(List<ServiceDescription> routes) {
+    if (_cachedSorted != null &&
+        routes.length == _lastRouteCount &&
+        _haversine(widget.userLat, widget.userLng, _lastSortLat, _lastSortLng) <
+            50) {
+      return _cachedSorted!;
+    }
+
     final withDist = <(ServiceDescription, double)>[];
     for (final desc in routes) {
-      final pp = ref.watch(pickupPointsProvider(desc.route));
+      final pp = ref.read(pickupPointsProvider(desc.route));
       double minDist = double.infinity;
       pp.whenData((points) {
         for (final p in points) {
@@ -172,7 +185,13 @@ class _LinesTabState extends ConsumerState<LinesTab> {
       withDist.add((desc, minDist));
     }
     withDist.sort((a, b) => a.$2.compareTo(b.$2));
-    return withDist.map((e) => e.$1).toList();
+
+    _cachedSorted = withDist.map((e) => e.$1).toList();
+    _lastSortLat = widget.userLat;
+    _lastSortLng = widget.userLng;
+    _lastRouteCount = routes.length;
+
+    return _cachedSorted!;
   }
 
   static double _haversine(double lat1, double lng1, double lat2, double lng2) {

@@ -6,6 +6,7 @@ import 'package:frontend/app/theme.dart';
 import 'package:frontend/core/utils/animations.dart';
 import 'package:frontend/core/widgets/loading_shimmer.dart';
 import 'package:frontend/core/widgets/error_card.dart';
+import 'package:frontend/core/widgets/pulsing_dot.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/data/models/building.dart';
 import 'package:frontend/data/models/route_leg.dart';
@@ -30,16 +31,19 @@ class RouteSuggestionsPanel extends ConsumerStatefulWidget {
       _RouteSuggestionsPanelState();
 }
 
-class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
+class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel>
+    with WidgetsBindingObserver {
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startRefreshTimer();
   }
 
   void _startRefreshTimer() {
+    _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) {
         final from = widget.userPosition != null
@@ -52,7 +56,20 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startRefreshTimer();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshTimer?.cancel();
     super.dispose();
   }
@@ -406,7 +423,7 @@ class _RouteCard extends ConsumerWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _PulsingDot(color: colors.success),
+                        PulsingDot(color: colors.success),
                         const SizedBox(width: 4),
                         Text(
                           eta.toLowerCase() == 'arr' ? 'Arriving' : '$eta min',
@@ -576,55 +593,6 @@ class _RouteCard extends ConsumerWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// Animated pulsing dot indicator for live data.
-class _PulsingDot extends StatefulWidget {
-  final Color color;
-
-  const _PulsingDot({required this.color});
-
-  @override
-  State<_PulsingDot> createState() => _PulsingDotState();
-}
-
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.color.withValues(
-              alpha: 0.4 + 0.6 * _controller.value,
-            ),
-          ),
-        );
-      },
     );
   }
 }

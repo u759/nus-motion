@@ -16,12 +16,19 @@ class FavoritesScreen extends ConsumerStatefulWidget {
   ConsumerState<FavoritesScreen> createState() => _FavoritesScreenState();
 }
 
-class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
+class _FavoritesScreenState extends ConsumerState<FavoritesScreen>
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       // Invalidate shuttle providers for visible favorite stops
@@ -32,13 +39,30 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     super.dispose();
   }
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final favoriteStops = ref.watch(favoriteStopsProvider);
     final favoriteRoutes = ref.watch(favoriteRoutesProvider);
     final recentSearches = ref.watch(recentSearchesProvider);
@@ -69,88 +93,128 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
               title: 'No saved items yet',
               subtitle: 'Bookmark stops and routes to see them here',
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              children: [
+          : CustomScrollView(
+              slivers: [
+                const SliverPadding(
+                  padding: EdgeInsets.only(top: 12),
+                  sliver: SliverToBoxAdapter(child: SizedBox.shrink()),
+                ),
+
                 // Favorite Stops
                 if (favoriteStops.isNotEmpty) ...[
-                  const _SectionHeader(title: 'Stops'),
-                  const SizedBox(height: 8),
-                  ...favoriteStops.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final stop = entry.value;
-                    return FadeSlideIn(
-                      key: ValueKey('fade_stop_$stop'),
-                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
-                      child: _FavoriteStopCard(
-                        stopName: stop,
-                        onDismissed: () => ref
-                            .read(favoriteStopsProvider.notifier)
-                            .toggle(stop),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 24),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: _SectionHeader(title: 'Stops'),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList.builder(
+                      itemCount: favoriteStops.length,
+                      itemBuilder: (context, i) {
+                        final stop = favoriteStops[i];
+                        return FadeSlideIn(
+                          key: ValueKey('fade_stop_$stop'),
+                          delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                          child: _FavoriteStopCard(
+                            stopName: stop,
+                            onDismissed: () => ref
+                                .read(favoriteStopsProvider.notifier)
+                                .toggle(stop),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
 
                 // Favorite Routes
                 if (favoriteRoutes.isNotEmpty) ...[
-                  const _SectionHeader(title: 'Routes'),
-                  const SizedBox(height: 8),
-                  ...favoriteRoutes.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final r = entry.value;
-                    return FadeSlideIn(
-                      key: ValueKey('fade_route_${r.from}_${r.to}'),
-                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
-                      child: _FavoriteRouteCard(
-                        from: r.from,
-                        to: r.to,
-                        onTap: () => context.go('/'),
-                        onDismissed: () => ref
-                            .read(favoriteRoutesProvider.notifier)
-                            .toggle(r.from, r.to),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 24),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: _SectionHeader(title: 'Routes'),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList.builder(
+                      itemCount: favoriteRoutes.length,
+                      itemBuilder: (context, i) {
+                        final r = favoriteRoutes[i];
+                        return FadeSlideIn(
+                          key: ValueKey('fade_route_${r.from}_${r.to}'),
+                          delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                          child: _FavoriteRouteCard(
+                            from: r.from,
+                            to: r.to,
+                            onTap: () => context.go('/'),
+                            onDismissed: () => ref
+                                .read(favoriteRoutesProvider.notifier)
+                                .toggle(r.from, r.to),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
 
                 // Recent Searches
                 if (recentSearches.isNotEmpty) ...[
-                  Row(
-                    children: [
-                      const _SectionHeader(title: 'Recents'),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () =>
-                            ref.read(recentSearchesProvider.notifier).clear(),
-                        child: Text(
-                          'Clear',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: colors.primary,
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const _SectionHeader(title: 'Recents'),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => ref
+                                .read(recentSearchesProvider.notifier)
+                                .clear(),
+                            child: Text(
+                              'Clear',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: colors.primary,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  ...recentSearches.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final r = entry.value;
-                    return FadeSlideIn(
-                      key: ValueKey('fade_recent_${r.from}_${r.to}'),
-                      delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
-                      child: _RecentSearchTile(
-                        from: r.from,
-                        to: r.to,
-                        onTap: () => context.go('/'),
-                      ),
-                    );
-                  }),
+                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList.builder(
+                      itemCount: recentSearches.length,
+                      itemBuilder: (context, i) {
+                        final r = recentSearches[i];
+                        return FadeSlideIn(
+                          key: ValueKey('fade_recent_${r.from}_${r.to}'),
+                          delay: Duration(milliseconds: 40 * i.clamp(0, 8)),
+                          child: _RecentSearchTile(
+                            from: r.from,
+                            to: r.to,
+                            onTap: () => context.go('/'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ],
+
+                const SliverPadding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  sliver: SliverToBoxAdapter(child: SizedBox.shrink()),
+                ),
               ],
             ),
     );

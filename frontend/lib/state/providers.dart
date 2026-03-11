@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/data/services/transit_service.dart';
@@ -31,16 +30,6 @@ final favoritesRepositoryProvider = Provider<FavoritesRepository>((ref) {
   return FavoritesRepository();
 });
 
-// -- Location Stream --
-final positionStreamProvider = StreamProvider<Position>((ref) {
-  return Geolocator.getPositionStream(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 15,
-    ),
-  );
-});
-
 // -- Cached static data --
 final stopsProvider = FutureProvider<List<BusStop>>((ref) {
   return ref.watch(transitServiceProvider).getStops();
@@ -57,19 +46,15 @@ final serviceDescriptionsProvider = FutureProvider<List<ServiceDescription>>((
 });
 
 // -- Parameterized queries --
-final shuttlesProvider = FutureProvider.family<ShuttleServiceResult, String>((
-  ref,
-  stopName,
-) {
-  return ref.watch(transitServiceProvider).getShuttles(stopName);
-});
+final shuttlesProvider = FutureProvider.autoDispose
+    .family<ShuttleServiceResult, String>((ref, stopName) {
+      return ref.watch(transitServiceProvider).getShuttles(stopName);
+    });
 
-final activeBusesProvider = FutureProvider.family<List<ActiveBus>, String>((
-  ref,
-  route,
-) {
-  return ref.watch(transitServiceProvider).getActiveBuses(route);
-});
+final activeBusesProvider = FutureProvider.autoDispose
+    .family<List<ActiveBus>, String>((ref, route) {
+      return ref.watch(transitServiceProvider).getActiveBuses(route);
+    });
 
 final checkpointsProvider = FutureProvider.family<List<CheckPoint>, String>((
   ref,
