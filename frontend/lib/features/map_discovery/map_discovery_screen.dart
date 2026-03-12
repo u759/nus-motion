@@ -790,12 +790,10 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   LatLng? get _currentUserLatLng {
-    final lastPosition = _lastPosition;
-    if (lastPosition == null) {
-      return null;
-    }
-
-    return LatLng(lastPosition.latitude, lastPosition.longitude);
+    // Prefer live stream position; fall back to initial position
+    final pos = _streamPosition ?? _lastPosition;
+    if (pos == null) return null;
+    return LatLng(pos.latitude, pos.longitude);
   }
 
   LatLng? _selectedNavigationDestinationPosition(NavigationState navState) {
@@ -979,15 +977,28 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
     final destinationPosition = _routeDestinationPosition(navState);
     if (destinationPosition != null && destinationIcon != null) {
+      // Highlight ring (below the stop icon)
       markers.add(
         Marker(
           markerId: const MarkerId('route_destination'),
           position: destinationPosition,
           icon: destinationIcon,
           anchor: const Offset(0.5, 0.5),
-          zIndexInt: 12,
+          zIndexInt: 10,
         ),
       );
+      // Stop icon rendered inside the ring (above it)
+      if (selectedStopIcon != null) {
+        markers.add(
+          Marker(
+            markerId: const MarkerId('route_destination_stop'),
+            position: destinationPosition,
+            icon: selectedStopIcon,
+            anchor: const Offset(0.5, 0.5),
+            zIndexInt: 14,
+          ),
+        );
+      }
     }
 
     return markers;
@@ -1085,8 +1096,9 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     final navState = ref.read(navigationStateProvider);
     if (navState.origin != null) {
       points.add(LatLng(navState.origin!.latitude, navState.origin!.longitude));
-    } else if (_lastPosition != null) {
-      points.add(LatLng(_lastPosition!.latitude, _lastPosition!.longitude));
+    } else {
+      final pos = _streamPosition ?? _lastPosition;
+      if (pos != null) points.add(LatLng(pos.latitude, pos.longitude));
     }
 
     // Add all leg endpoints

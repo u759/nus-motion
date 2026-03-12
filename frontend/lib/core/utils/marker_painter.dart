@@ -88,7 +88,9 @@ class MarkerPainter {
   static Future<BitmapDescriptor> createDestinationMarker({
     double dpr = 2.0,
   }) async {
-    const double dpSize = 28;
+    // Match the bus-stop highlight ring style for UI consistency:
+    // 36dp circle with 3dp blue border + translucent blue fill.
+    const double dpSize = 36;
     final double size = dpSize * dpr;
     const Color selectedBlue = Color(0xFF135BEC);
 
@@ -96,53 +98,26 @@ class MarkerPainter {
     final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
 
     final center = Offset(size / 2, size / 2);
-    final haloRadius = size / 2 - 1.0 * dpr;
-    final coreRadius = haloRadius * 0.64;
+    final borderWidth = 3.0 * dpr;
+    final radius = size / 2 - borderWidth / 2;
 
-    // Soft outer halo.
+    // Translucent blue fill
     canvas.drawCircle(
       center,
-      haloRadius,
+      radius,
       Paint()
-        ..color = selectedBlue.withValues(alpha: 0.18)
+        ..color = selectedBlue.withValues(alpha: 0.15)
         ..style = PaintingStyle.fill,
     );
 
-    // Subtle halo ring for definition against map tiles.
+    // Solid blue border ring
     canvas.drawCircle(
       center,
-      haloRadius,
-      Paint()
-        ..color = selectedBlue.withValues(alpha: 0.38)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5 * dpr,
-    );
-
-    // Core shadow.
-    canvas.drawCircle(
-      center + Offset(0, 1.0 * dpr),
-      coreRadius,
-      Paint()
-        ..color = selectedBlue.withValues(alpha: 0.22)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 * dpr),
-    );
-
-    // Blue center.
-    canvas.drawCircle(
-      center,
-      coreRadius,
+      radius,
       Paint()
         ..color = selectedBlue
-        ..style = PaintingStyle.fill,
-    );
-
-    // White focus dot.
-    canvas.drawCircle(
-      center,
-      coreRadius * 0.42,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill,
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = borderWidth,
     );
 
     return _toBitmap(recorder, size, dpr);
