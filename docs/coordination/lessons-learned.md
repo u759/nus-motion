@@ -52,4 +52,17 @@ Large tasks lead to large mistakes. Every task must be small enough to review in
 
 ---
 
+## Deployment
+
+### Oracle Cloud iptables Rule Ordering
+Oracle Cloud Ubuntu images have a default REJECT-ALL rule (typically at position 5) in the INPUT chain. Any ACCEPT rules inserted **after** this position are ignored — traffic hits the REJECT first. Always insert custom rules **before** the REJECT rule: `sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 443 -j ACCEPT`.
+
+### Caddy Needs Both Port 80 and 443 Open
+Caddy uses port 443 for TLS-ALPN-01 ACME challenge and port 80 for HTTP→HTTPS redirects. If only port 80 is open, Caddy falls back to HTTP-only mode.
+
+### systemd StartLimitBurst Goes in [Unit]
+`StartLimitBurst` and `StartLimitIntervalSec` must go in the `[Unit]` section, not `[Service]`. Placing them in `[Service]` causes a warning.
+
+---
+
 <!-- Add new lessons above this line, under the appropriate section header -->

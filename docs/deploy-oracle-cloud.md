@@ -1,174 +1,83 @@
-# NUS Motion Backend — Oracle Cloud Free Tier Deployment Guide
+# NUS Motion Backend — VPS Deployment Guide
 
-> **Target:** Oracle Cloud Free Tier VM (1GB RAM, ARM Ampere A1 or AMD E2.1)  
-> **Stack:** Spring Boot 4, Java 21, Caddy (HTTPS reverse proxy)
-
-This guide deploys the NUS Motion Spring Boot backend on a resource-constrained VM with automatic HTTPS via Let's Encrypt.
+> **Stack:** Spring Boot 4, Java 21, Caddy (auto-HTTPS reverse proxy)  
+> **Tested on:** Ubuntu 24.04 LTS (works on 22.04+, Oracle Linux 9, Debian 12)
 
 ---
 
 ## Prerequisites
 
-### 1. Oracle Cloud VM Setup
-1. Create a Free Tier compute instance:
-   - **Shape:** VM.Standard.A1.Flex (ARM) or VM.Standard.E2.1.Micro (AMD)
-   - **Memory:** 1GB RAM
-   - **Image:** Oracle Linux 9 or Ubuntu 22.04 (both work; this guide uses Ubuntu)
-   - **Boot volume:** 50GB (default)
-
-2. Note the **Public IP Address** from the instance details page.
-
-3. Download the SSH private key during instance creation.
-
-### 2. Domain Pointing to VM IP
-Point your domain (e.g., `api.nusmotion.example.com`) to the VM's public IP:
-
-```
-Type: A
-Name: api (or @ for root domain)
-Value: <YOUR_VM_PUBLIC_IP>
-TTL: 300
-```
-
-**DNS propagation takes 5–30 minutes.** Verify with:
-```bash
-dig +short api.nusmotion.example.com
-```
-
-### 3. SSH Access
-```bash
-chmod 400 ~/oracle-cloud-key.pem
-ssh -i ~/oracle-cloud-key.pem ubuntu@<YOUR_VM_PUBLIC_IP>
-```
+1. **A VPS** with at least 1GB RAM and a public IP address.
+2. **SSH access** to the VPS.
+3. **A deSEC account** (free) — set up in Step 6 below.
 
 ---
 
 ## Step 1: Install Java 21
 
-### Ubuntu 22.04+
 ```bash
-sudo apt update
-sudo apt install -y openjdk-21-jdk-headless
-java -version
+sudo apt update && sudo apt install -y openjdk-21-jdk-headless
+java -version   # Verify: openjdk 21.x.x
 ```
-
-### Oracle Linux 9
-```bash
-sudo dnf install -y java-21-openjdk-headless
-java -version
-```
-
-Verify output shows `openjdk 21.x.x`.
 
 ---
 
-## Step 2: JVM Memory Tuning for 1GB RAM
+## Step 2: Build & Upload the JAR
 
-With only 1GB total RAM, the memory budget is:
-| Component | RAM Allocation |
-|-----------|----------------|
-| OS & buffers | ~300MB |
-| Caddy (reverse proxy) | ~30MB |
-| JVM heap + metaspace | ~500MB |
-| Headroom | ~170MB |
-
-### Recommended JVM Options
-
-Create an environment file for the service:
-
-```bash
-sudo mkdir -p /etc/nusmotion
-sudo nano /etc/nusmotion/jvm.conf
-```
-
-Add:
-```bash
-# JVM options for 1GB RAM environment
-JAVA_OPTS="-Xms256m -Xmx400m \
-  -XX:+UseSerialGC \
-  -XX:MaxMetaspaceSize=64m \
-  -XX:+ExitOnOutOfMemoryError \
-  -Djava.security.egd=file:/dev/./urandom"
-```
-
-**Options explained:**
-| Option | Purpose |
-|--------|---------|
-| `-Xms256m` | Initial heap size (start small) |
-| `-Xmx400m` | Maximum heap size (hard limit) |
-| `-XX:+UseSerialGC` | Single-threaded GC; lowest memory overhead |
-| `-XX:MaxMetaspaceSize=64m` | Limit class metadata memory |
-| `-XX:+ExitOnOutOfMemoryError` | Crash cleanly on OOM (systemd restarts) |
-| `-Djava.security.egd=...` | Faster startup (non-blocking entropy) |
-
-> **Note:** Serial GC adds ~50ms pause time during garbage collection but uses 50% less memory than G1GC. Acceptable for a low-traffic API.
-
----
-
-## Step 3: Build the JAR Locally
-
-On your **development machine** (not the VM):
+On your **local machine**:
 
 ```bash
 cd backend
 ./mvnw clean package -DskipTests
-```
-
-The JAR is at: `target/backend-0.0.1-SNAPSHOT.jar`
-
-### Upload to VM
-```bash
-scp -i ~/oracle-cloud-key.pem \
-  target/backend-0.0.1-SNAPSHOT.jar \
-  ubuntu@<YOUR_VM_PUBLIC_IP>:/home/ubuntu/
+scp target/backend-0.0.1-SNAPSHOT.jar user@<VPS_IP>:/home/ubuntu/
 ```
 
 ---
 
-## Step 4: Create Application Directory
+## Step 3: Set Up the Application Directory
 
-On the VM:
+On the VPS:
 
 ```bash
-sudo mkdir -p /opt/nusmotion
+sudo mkdir -p /opt/nusmotion/tomcat-tmp
 sudo mv /home/ubuntu/backend-0.0.1-SNAPSHOT.jar /opt/nusmotion/app.jar
 sudo chown -R ubuntu:ubuntu /opt/nusmotion
 ```
 
-### Create application.properties
+---
+
+## Step 4: JVM Options (Memory Tuning)
+
+Create a JVM config file:
 
 ```bash
-sudo nano /opt/nusmotion/application.properties
+sudo mkdir -p /etc/nusmotion
+sudo tee /etc/nusmotion/jvm.conf > /dev/null << 'EOF'
+JAVA_OPTS=-Xms256m -Xmx400m -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom
+EOF
 ```
 
-Add your production config:
-```properties
-# Server
-server.port=8080
+| Option | Purpose |
+|--------|---------|
+| `-Xms256m -Xmx400m` | Heap size (fit within 1GB RAM) |
+| `-XX:+UseSerialGC` | Lowest memory GC (adds ~50ms pause, acceptable) |
+| `-XX:MaxMetaspaceSize=64m` | Cap class metadata |
+| `-XX:+ExitOnOutOfMemoryError` | Clean crash on OOM (systemd restarts) |
 
-# Logging (reduce verbosity in prod)
-logging.level.root=WARN
-logging.level.com.nusmotion=INFO
-
-# Cache settings (from your existing config)
-spring.cache.caffeine.spec=maximumSize=500,expireAfterWrite=30s
-```
+> For VPS with 2GB+ RAM, increase `-Xmx` to 800m and use `-XX:+UseG1GC` instead.
 
 ---
 
 ## Step 5: Create Systemd Service
 
 ```bash
-sudo nano /etc/systemd/system/nusmotion.service
-```
-
-Add:
-```ini
+sudo tee /etc/systemd/system/nusmotion.service > /dev/null << 'EOF'
 [Unit]
 Description=NUS Motion Backend API
-Documentation=https://github.com/your-repo/nus-motion
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -176,39 +85,39 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/opt/nusmotion
 
-# Load JVM options from environment file
 EnvironmentFile=/etc/nusmotion/jvm.conf
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/nusmotion/app.jar
 
-# Start the application
-ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/nusmotion/app.jar \
-  --spring.config.additional-location=file:/opt/nusmotion/application.properties
-
-# Restart policy
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=3
-StartLimitIntervalSec=60
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/nusmotion/logs
+PrivateTmp=true
+ReadWritePaths=/opt/nusmotion
 
-# Resource limits
+# Resource limits (adjust for your VPS)
 MemoryMax=600M
 MemoryHigh=550M
 
-# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=nusmotion
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
 
+**Key details:**
+- `ProtectSystem=strict` makes the filesystem read-only for security.
+- `PrivateTmp=true` provides a private writable `/tmp` for Tomcat.
+- `ReadWritePaths=/opt/nusmotion` allows writing to the app directory (logs, tomcat-tmp).
+
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable nusmotion
@@ -223,11 +132,76 @@ journalctl -u nusmotion -f
 
 ---
 
-## Step 6: Install Caddy (Lightweight HTTPS Reverse Proxy)
+## Step 6: Set Up deSEC DNS (Free Domain + HTTPS)
 
-Caddy automatically obtains and renews Let's Encrypt certificates. Uses ~20-30MB RAM.
+[deSEC](https://desec.io) provides free `dedyn.io` subdomains with automatic DNSSEC. This gives you a domain like `nusmotion.dedyn.io` that you can point to your VPS for free HTTPS.
 
-### Ubuntu
+### 1. Create an account
+
+Go to **https://desec.io/signup** and register with your email. Confirm via the activation link sent to your inbox.
+
+### 2. Create an API token
+
+Log in at **https://desec.io** → **Token Management** → **Create New Token**.
+
+Copy the token — you'll need it for the next commands. Store it safely.
+
+### 3. Register your dedyn.io domain
+
+```bash
+# Replace YOUR_TOKEN and YOUR_SUBDOMAIN (e.g. "nusmotion")
+curl -X POST https://desec.io/api/v1/domains/ \
+    --header "Authorization: Token YOUR_TOKEN" \
+    --header "Content-Type: application/json" \
+    --data '{"name": "YOUR_SUBDOMAIN.dedyn.io"}'
+```
+
+If you get `201 Created`, your domain is registered. If `409 Conflict`, the name is taken — try a different subdomain.
+
+### 4. Point the domain to your VPS IP
+
+```bash
+# Get your VPS public IP (run on VPS)
+curl -s ifconfig.me
+
+# Set the A record (run anywhere)
+curl -X POST https://desec.io/api/v1/domains/YOUR_SUBDOMAIN.dedyn.io/rrsets/ \
+    --header "Authorization: Token YOUR_TOKEN" \
+    --header "Content-Type: application/json" \
+    --data '{
+        "subname": "",
+        "type": "A",
+        "ttl": 300,
+        "records": ["YOUR_VPS_IP"]
+    }'
+```
+
+Replace `YOUR_SUBDOMAIN`, `YOUR_TOKEN`, and `YOUR_VPS_IP` with your actual values.
+
+### 5. Verify DNS propagation
+
+Wait 1-2 minutes, then:
+
+```bash
+dig +short YOUR_SUBDOMAIN.dedyn.io
+```
+
+This should return your VPS IP address. If not, wait a few more minutes and try again.
+
+> **Tip:** If you need to update the IP later (e.g. VPS migration), use `PATCH` instead of `POST`:
+> ```bash
+> curl -X PATCH https://desec.io/api/v1/domains/YOUR_SUBDOMAIN.dedyn.io/rrsets/@/A/ \
+>     --header "Authorization: Token YOUR_TOKEN" \
+>     --header "Content-Type: application/json" \
+>     --data '{"records": ["NEW_VPS_IP"]}'
+> ```
+
+---
+
+## Step 7: Install Caddy (Auto-HTTPS Reverse Proxy)
+
+Caddy handles TLS certificates automatically via Let's Encrypt.
+
 ```bash
 sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -236,216 +210,133 @@ sudo apt update
 sudo apt install caddy
 ```
 
-### Oracle Linux 9
-```bash
-sudo dnf install -y 'dnf-command(copr)'
-sudo dnf copr enable @caddy/caddy -y
-sudo dnf install -y caddy
-```
-
 ### Configure Caddy
 
 ```bash
-sudo nano /etc/caddy/Caddyfile
-```
-
-Replace contents with:
-```caddy
-api.nusmotion.example.com {
-    # Automatic HTTPS via Let's Encrypt
-    # No manual certificate setup required
-
-    # Reverse proxy to Spring Boot
+sudo tee /etc/caddy/Caddyfile > /dev/null << 'EOF'
+nusmotion.dedyn.io {  # Replace with your domain
     reverse_proxy localhost:8080
 
-    # Logging
-    log {
-        output file /var/log/caddy/access.log
-        format json
-    }
-
-    # Security headers
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
     }
 
-    # Health check endpoint (no logging)
-    @health path /actuator/health
-    handle @health {
-        reverse_proxy localhost:8080
+    log {
+        output file /var/log/caddy/access.log
+        format json
     }
 }
+EOF
 ```
 
-**Replace `api.nusmotion.example.com` with your actual domain.**
+**Replace `nusmotion.dedyn.io` with your actual deSEC domain.**
 
-Enable and start Caddy:
+Caddy obtains TLS certificates automatically via Let's Encrypt (HTTP-01 challenge).
+Ports 80 and 443 must be open for this to work.
+
 ```bash
 sudo mkdir -p /var/log/caddy
 sudo chown caddy:caddy /var/log/caddy
 sudo systemctl enable caddy
 sudo systemctl start caddy
-sudo systemctl status caddy
 ```
 
 ---
 
-## Step 7: Oracle Cloud Security List (Firewall)
+## Step 8: Open Firewall Ports
 
-Oracle Cloud blocks all traffic by default. You must open ports in the **Security List**.
+### OS-Level Firewall (iptables)
 
-### Via Oracle Cloud Console
+Oracle Cloud Ubuntu images use raw iptables rules (not ufw). Add rules for HTTP and HTTPS **before** the default REJECT rule:
 
-1. Go to **Networking** → **Virtual Cloud Networks**
-2. Click your VCN → **Security Lists** → **Default Security List**
-3. Click **Add Ingress Rules**
-
-Add these rules:
-
-| Stateless | Source CIDR | Protocol | Dest Port | Description |
-|-----------|-------------|----------|-----------|-------------|
-| No | 0.0.0.0/0 | TCP | 80 | HTTP (Caddy redirect) |
-| No | 0.0.0.0/0 | TCP | 443 | HTTPS (Caddy) |
-| No | 0.0.0.0/0 | TCP | 22 | SSH (already open) |
-
-### VM-Level Firewall (iptables)
-
-Oracle Linux and Ubuntu also have OS-level firewalls. Open the ports:
-
-**Ubuntu (ufw):**
 ```bash
+# Find the REJECT rule position
+sudo iptables -L INPUT -n --line-numbers | grep REJECT
+# Note the line number (typically 5)
+
+# Insert BEFORE the REJECT rule (replace 5 with your REJECT line number)
+sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo netfilter-persistent save
+```
+
+> **Critical:** Rules must be inserted **before** the REJECT line. If they end up after it, all traffic is rejected before reaching your ACCEPT rules.
+
+Verify the order (80 and 443 should appear before REJECT):
+```bash
+sudo iptables -L INPUT -n --line-numbers
+```
+
+> **Note:** If `netfilter-persistent` is not installed: `sudo apt install -y iptables-persistent`
+
+### Oracle Cloud Security List (required)
+
+Oracle Cloud also blocks traffic at the VCN level. Open ports in the **Security List** via the web console:
+
+1. **Networking** → **Virtual Cloud Networks** → your VCN
+2. **Subnets** → your subnet → **Security Lists** → **Default Security List**
+3. **Add Ingress Rules:**
+
+| Source CIDR | Protocol | Dest Port | Description |
+|-------------|----------|-----------|-------------|
+| 0.0.0.0/0 | TCP | 80 | HTTP (Caddy→HTTPS redirect) |
+| 0.0.0.0/0 | TCP | 443 | HTTPS (Caddy TLS) |
+
+Port 22 (SSH) should already be open by default.
+
+### Non-Oracle VPS (Hetzner, DigitalOcean, etc.)
+
+If your VPS uses ufw:
+```bash
+sudo apt install -y ufw
+sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw enable
-sudo ufw status
-```
-
-**Oracle Linux (firewalld):**
-```bash
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
-sudo firewall-cmd --reload
-sudo firewall-cmd --list-all
 ```
 
 ---
 
-## Step 8: Testing
+## Step 9: Verify
 
-### 1. Check Spring Boot is Running
+### 1. Spring Boot (local on VPS)
 ```bash
-curl -s http://localhost:8080/actuator/health
-# Expected: {"status":"UP"}
+# Bus stops
+curl -s http://localhost:8080/api/stops | head -c 200
+
+# Bus routes/shuttles
+curl -s http://localhost:8080/api/shuttles | head -c 200
+
+# Active buses
+curl -s http://localhost:8080/api/active-buses | head -c 200
+
+# Weather (NUS coordinates)
+curl -s 'http://localhost:8080/api/weather?lat=1.2966&lng=103.7764'
+
+# Route planning
+curl -s 'http://localhost:8080/api/route?from=COM3&to=University+Hall' | head -c 500
+
+# Buildings
+curl -s http://localhost:8080/api/buildings | head -c 200
 ```
 
-### 2. Check Caddy is Proxying
+### 2. External HTTPS (from your local machine)
 ```bash
-curl -s http://localhost:80
-# Should redirect to HTTPS
+curl -s https://nusmotion.dedyn.io/api/stops | head -c 200
+curl -s 'https://nusmotion.dedyn.io/api/weather?lat=1.2966&lng=103.7764'
 ```
-
-### 3. Test External HTTPS
-From your local machine:
-```bash
-curl -s https://api.nusmotion.example.com/actuator/health
-# Expected: {"status":"UP"}
-```
-
-### 4. Test an API Endpoint
-```bash
-curl -s https://api.nusmotion.example.com/api/routes | jq
-```
-
----
-
-## Troubleshooting
-
-### Spring Boot Won't Start
-
-**Check logs:**
-```bash
-journalctl -u nusmotion -n 100 --no-pager
-```
-
-**Common issues:**
-- **Port 8080 already in use:** `sudo lsof -i :8080`
-- **Out of memory:** Reduce `-Xmx` to 350m
-- **Missing config:** Ensure `/opt/nusmotion/application.properties` exists
-
-### Caddy Certificate Errors
-
-**Check Caddy logs:**
-```bash
-journalctl -u caddy -n 50 --no-pager
-```
-
-**Common issues:**
-- **DNS not propagated:** Wait 30 minutes, verify with `dig +short yourdomain.com`
-- **Port 80 blocked:** Caddy needs port 80 for ACME HTTP-01 challenge
-- **Firewall blocking:** Check both Oracle Security List AND OS firewall
-
-### Out of Memory (OOM)
-
-**Check memory usage:**
-```bash
-free -h
-ps aux --sort=-%mem | head -10
-```
-
-**If OOM killed:**
-```bash
-dmesg | grep -i "killed process"
-```
-
-**Solutions:**
-1. Reduce heap: `-Xmx350m`
-2. Add swap (1GB):
-   ```bash
-   sudo fallocate -l 1G /swapfile
-   sudo chmod 600 /swapfile
-   sudo mkswap /swapfile
-   sudo swapon /swapfile
-   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-   ```
-
-### SSL Certificate Not Working
-
-Test certificate:
-```bash
-curl -vI https://api.nusmotion.example.com 2>&1 | grep -A5 "SSL certificate"
-```
-
-Force certificate renewal:
-```bash
-sudo caddy reload --config /etc/caddy/Caddyfile
-```
-
----
-
-## Memory Usage Reference
-
-Expected memory footprint after optimization:
-
-| Process | RSS Memory |
-|---------|------------|
-| Java (Spring Boot) | 350-450 MB |
-| Caddy | 20-30 MB |
-| OS + systemd | 200-300 MB |
-| **Total** | ~700-800 MB |
-
-This leaves ~200MB headroom for spikes.
 
 ---
 
 ## Updating the Application
 
 ```bash
-# Upload new JAR to VM
-scp -i ~/oracle-cloud-key.pem target/backend-0.0.1-SNAPSHOT.jar ubuntu@<VM_IP>:/home/ubuntu/
+# Upload new JAR
+scp target/backend-0.0.1-SNAPSHOT.jar user@<VPS_IP>:/home/ubuntu/
 
-# On the VM
+# On VPS
 sudo systemctl stop nusmotion
 sudo mv /home/ubuntu/backend-0.0.1-SNAPSHOT.jar /opt/nusmotion/app.jar
 sudo systemctl start nusmotion
@@ -454,54 +345,56 @@ journalctl -u nusmotion -f
 
 ---
 
-## Quick Reference Commands
+## Troubleshooting
+
+### Service won't start
+```bash
+journalctl -u nusmotion -n 100 --no-pager
+```
+- **Port 8080 in use:** `sudo lsof -i :8080` then `sudo kill <PID>`
+- **Read-only /tmp:** Verify `PrivateTmp=true` is in the service file and run `sudo systemctl daemon-reload && sudo systemctl restart nusmotion`
+- **Out of memory:** Reduce `-Xmx` to 350m in `/etc/nusmotion/jvm.conf`
+
+### Caddy not working
+```bash
+journalctl -u caddy -n 50 --no-pager
+```
+- **DNS not propagated:** Wait 30 min, check with `dig +short yourdomain.com`
+- **Port 80 blocked:** Caddy needs port 80 for Let's Encrypt ACME challenge
+- **TLS internal error / no cert:** Ports 80+443 must be open. Check `sudo iptables -L INPUT -n --line-numbers` — if the ACCEPT rules for 80/443 are **after** the REJECT rule, they're being ignored. Move them before the REJECT.
+- **"server is listening only on the HTTP port":** The Caddyfile wasn't loaded. Run `sudo systemctl reload caddy` and check logs.
+
+### OOM kills
+```bash
+dmesg | grep -i "killed process"
+free -h
+```
+Add swap if needed:
+```bash
+sudo fallocate -l 1G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+---
+
+## Quick Reference
 
 ```bash
-# Service management
+# Service
 sudo systemctl start|stop|restart|status nusmotion
 sudo systemctl start|stop|restart|status caddy
 
 # Logs
-journalctl -u nusmotion -f          # Spring Boot logs
-journalctl -u caddy -f               # Caddy logs
-tail -f /var/log/caddy/access.log    # Caddy access log
+journalctl -u nusmotion -f
+journalctl -u caddy -f
 
-# Memory check
+# Memory
 free -h
 ps aux --sort=-%mem | head -5
 
 # Ports
 sudo ss -tlnp | grep -E '80|443|8080'
-
-# Test endpoints
-curl -s http://localhost:8080/actuator/health
-curl -s https://api.nusmotion.example.com/actuator/health
 ```
-
----
-
-## Security Checklist
-
-- [ ] SSH key authentication only (disable password auth)
-- [ ] Firewall restricts ingress to 22, 80, 443 only
-- [ ] No secrets in application.properties (use env vars for sensitive data)
-- [ ] Spring Boot running as non-root user
-- [ ] Caddy auto-renews certificates (check `journalctl -u caddy`)
-- [ ] Monitor memory usage (set up alerts if available)
-
----
-
-## Alternative: Nginx (If Caddy Not Preferred)
-
-If you prefer Nginx over Caddy (uses ~5-10MB RAM but requires manual cert setup):
-
-```bash
-sudo apt install -y nginx certbot python3-certbot-nginx
-
-# Get certificate
-sudo certbot --nginx -d api.nusmotion.example.com
-
-# Nginx config is auto-generated by certbot
-```
-
-However, **Caddy is recommended** for simplicity — no manual certificate commands needed.

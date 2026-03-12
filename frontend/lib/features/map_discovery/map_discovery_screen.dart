@@ -44,6 +44,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   GoogleMapController? _mapController;
   Timer? _pollTimer;
   Timer? _highlightFlashTimer;
+  Timer? _resyncTimer;
   Position? _lastPosition;
 
   // Map selection state
@@ -190,14 +191,14 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   /// Update screen coordinates for the location marker.
   void _updateLocationScreenPosition() {
     final camera = _currentCameraPosition;
-    final mapSize = _lastMapSize;
     final position = _streamPosition;
-    if (camera == null ||
-        mapSize == null ||
-        mapSize.isEmpty ||
-        position == null) {
-      return;
-    }
+    if (camera == null || position == null) return;
+
+    // Read size from the render object directly (same as _updateBusScreenPositions)
+    // to avoid timing discrepancy with the cached _lastMapSize on resize.
+    final renderBox = _mapKey.currentContext?.findRenderObject() as RenderBox?;
+    final mapSize = renderBox?.size;
+    if (mapSize == null || mapSize.isEmpty) return;
 
     final screenPos = _latLngToScreen(
       LatLng(position.latitude, position.longitude),
@@ -478,6 +479,33 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   void _onCameraIdle() {
     _updateBusScreenPositions(animate: false);
     _updateLocationScreenPosition();
+  }
+
+  /// Forces a map re-sync after window resize (iPadOS multitasking, orientation).
+  /// Delays briefly to let the Google Maps native view finish its resize, then
+  /// forces a camera update which triggers onCameraMove to refresh our state.
+  void _scheduleMapResync() {
+    _resyncTimer?.cancel();
+    _resyncTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted || _mapController == null) return;
+      // Update map size from the actual render object
+      final renderBox =
+          _mapKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        _lastMapSize = renderBox.size;
+      }
+      // Best-effort poke: some platform implementations re-report the camera
+      // position on moveCamera even when unchanged; others suppress it.
+      // The explicit recalculations below are the actual fix — do not remove.
+      if (_currentCameraPosition != null) {
+        _mapController!.moveCamera(
+          CameraUpdate.newCameraPosition(_currentCameraPosition!),
+        );
+      }
+      // Recalculate all overlay positions with the fresh map size
+      _updateBusScreenPositions(animate: false);
+      _updateLocationScreenPosition();
+    });
   }
 
   /// Synchronously update screen coordinates for all visible buses
@@ -1138,6 +1166,16 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   }
 
   @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // iPadOS multitasking resize / orientation change detected.
+    // Google Maps native platform view resizes asynchronously and may not
+    // fire onCameraMove, leaving _currentCameraPosition stale.
+    // Schedule a delayed re-sync to let the platform view finish resizing.
+    _scheduleMapResync();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _startPolling();
@@ -1172,6 +1210,7 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _highlightFlashTimer?.cancel();
+    _resyncTimer?.cancel();
     _positionStreamSubscription?.cancel();
     _tabController.dispose();
     _routeAnimController?.dispose();
@@ -1309,7 +1348,10 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
               // Detect resize and schedule position update (skip initial build)
               if (_lastMapSize != null && _lastMapSize != currentSize) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _updateBusScreenPositions(animate: false);
+                  if (mounted) {
+                    _updateBusScreenPositions(animate: false);
+                    _updateLocationScreenPosition();
+                  }
                 });
               }
               _lastMapSize = currentSize;
@@ -1545,6 +1587,7 @@ class _BusOverlays extends StatelessWidget {
     String? highlightPlate,
   }) {
     final overlays = <Widget>[];
+    final seenPlates = <String>{};
 
     for (final entry in busMap.entries) {
       final routeCode = entry.key;
@@ -1554,6 +1597,7 @@ class _BusOverlays extends StatelessWidget {
       final color = RouteBadge.colorForRoute(routeCode);
 
       for (final bus in entry.value) {
+        if (!seenPlates.add(bus.vehPlate)) continue;
         final screenPos = busScreenPositions[bus.vehPlate];
         if (screenPos == null) continue;
 

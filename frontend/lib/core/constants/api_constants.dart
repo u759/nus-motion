@@ -1,5 +1,5 @@
 class ApiConstants {
-  static const String baseUrl = 'http://localhost:8080/api';
+  static const String baseUrl = 'https://nusmotion.dedyn.io/api';
   static const Duration timeout = Duration(seconds: 15);
   static const Duration pollShuttles = Duration(seconds: 5);
   static const Duration pollActiveBuses = Duration(seconds: 5);

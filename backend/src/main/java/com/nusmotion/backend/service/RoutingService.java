@@ -6,6 +6,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -89,6 +91,20 @@ public class RoutingService {
         }
 
         Map<String, RoutePath> routePaths = buildRoutePaths(allStops);
+
+        // Pre-warm shuttle service cache for origin candidates (parallel I/O)
+        Set<String> warmupStopNames = new LinkedHashSet<>();
+        for (CandidateStop o : originCandidates) {
+            warmupStopNames.add(o.stop.name());
+        }
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<CompletableFuture<Void>> warmups = warmupStopNames.stream()
+                    .map(name -> CompletableFuture.runAsync(() -> {
+                        try { nusApiService.getShuttleService(name); } catch (Exception ignored) {}
+                    }, executor))
+                    .toList();
+            CompletableFuture.allOf(warmups.toArray(CompletableFuture[]::new)).join();
+        }
 
         List<PlanCandidate> candidates = new ArrayList<>();
 
@@ -376,17 +392,38 @@ public class RoutingService {
     }
 
     private Map<String, RoutePath> buildRoutePaths(List<BusStop> allStops) {
-        Map<String, RoutePath> paths = new HashMap<>();
-
         List<ServiceDescription> routes = nusApiService.getServiceDescriptions();
-        for (ServiceDescription route : routes) {
-            String routeCode = route.route();
-            if (routeCode == null || routeCode.isBlank()) continue;
 
-            List<PickupPoint> pickupPoints = nusApiService.getPickupPoints(routeCode);
-            if (pickupPoints == null || pickupPoints.isEmpty()) continue;
+        List<String> routeCodes = routes.stream()
+                .map(ServiceDescription::route)
+                .filter(code -> code != null && !code.isBlank())
+                .toList();
 
-            List<PickupPoint> sorted = pickupPoints.stream()
+        // Fetch all pickup points in parallel using virtual threads (I/O-bound)
+        Map<String, List<PickupPoint>> pickupPointsByRoute = new HashMap<>();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Map<String, CompletableFuture<List<PickupPoint>>> futures = new LinkedHashMap<>();
+            for (String routeCode : routeCodes) {
+                futures.put(routeCode, CompletableFuture.supplyAsync(
+                        () -> nusApiService.getPickupPoints(routeCode), executor));
+            }
+            for (var entry : futures.entrySet()) {
+                try {
+                    List<PickupPoint> points = entry.getValue().join();
+                    if (points != null && !points.isEmpty()) {
+                        pickupPointsByRoute.put(entry.getKey(), points);
+                    }
+                } catch (Exception ignored) {
+                    // Skip routes whose pickup-point fetch failed
+                }
+            }
+        }
+
+        // Build route paths from fetched data
+        Map<String, RoutePath> paths = new HashMap<>();
+        for (var entry : pickupPointsByRoute.entrySet()) {
+            String routeCode = entry.getKey();
+            List<PickupPoint> sorted = entry.getValue().stream()
                     .sorted(Comparator.comparingInt(PickupPoint::seq))
                     .toList();
 

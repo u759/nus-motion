@@ -380,6 +380,17 @@ class _StopDetailViewState extends ConsumerState<_StopDetailView> {
   String _shuttleKey(Shuttle s) => '${s.busstopcode}_${s.name}';
 
   @override
+  void didUpdateWidget(_StopDetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // When route is deselected externally (e.g., X button on route banner),
+    // collapse the expanded shuttle row to prevent auto-update from re-selecting.
+    if (widget.selectedRoute == null && oldWidget.selectedRoute != null) {
+      _expandedShuttleKey = null;
+      _lastHighlightedPlate = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.nusColors;
     final shuttles = ref.watch(shuttlesProvider(widget.stop.stopName));

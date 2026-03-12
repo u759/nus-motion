@@ -36,7 +36,7 @@ public class CacheConfig {
 
         manager.registerCustomCache("busStops",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofMinutes(5))
+                .expireAfterWrite(Duration.ofDays(1))
                 .maximumSize(1)
                 .build());
 
@@ -118,10 +118,10 @@ public class CacheConfig {
                 .maximumSize(200)
                 .build());
 
-        // Buildings data rarely changes — cache for 1 hour, single entry (full list)
+        // Buildings & bus stops rarely change — cache for 1 day
         manager.registerCustomCache("buildings",
             Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofHours(1))
+                .expireAfterWrite(Duration.ofDays(1))
                 .maximumSize(1)
                 .build());
 
