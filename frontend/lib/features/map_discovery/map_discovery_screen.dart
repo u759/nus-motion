@@ -719,12 +719,24 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
 
   Set<Polyline> _buildRoutePreviewPolylines(RoutePlanResult route) {
     final polylines = <Polyline>{};
-    final userPosition = _currentUserLatLng;
+    final navState = ref.read(navigationStateProvider);
+    // Prefer custom origin coordinates over GPS for walk leg start
+    final userPosition = navState.origin != null
+        ? LatLng(navState.origin!.latitude, navState.origin!.longitude)
+        : _currentUserLatLng;
     final destinationPosition = _selectedNavigationDestinationPosition(
-      ref.read(navigationStateProvider),
+      navState,
     );
 
+    // Skip first walk leg polyline when origin is a custom building
+    final skipFirstWalk =
+        navState.origin != null &&
+        route.legs.isNotEmpty &&
+        route.legs.first.isWalk;
+
     for (int i = 0; i < route.legs.length; i++) {
+      if (skipFirstWalk && i == 0) continue;
+
       final leg = route.legs[i];
 
       if (leg.isWalk) {
@@ -1069,8 +1081,11 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
   void _fitMapToRoute(RoutePlanResult route) {
     final points = <LatLng>[];
 
-    // Add user position as origin
-    if (_lastPosition != null) {
+    // Add origin point: prefer custom origin over GPS
+    final navState = ref.read(navigationStateProvider);
+    if (navState.origin != null) {
+      points.add(LatLng(navState.origin!.latitude, navState.origin!.longitude));
+    } else if (_lastPosition != null) {
       points.add(LatLng(_lastPosition!.latitude, _lastPosition!.longitude));
     }
 
@@ -1320,7 +1335,19 @@ class _MapDiscoveryScreenState extends ConsumerState<MapDiscoveryScreen>
                       },
                       onCameraMove: _onCameraMove,
                       onCameraIdle: _onCameraIdle,
-                      onTap: (_) => _clearAll(),
+                      onTap: (_) {
+                        // Don't deselect when a detail view is active
+                        if (_selectedStop != null ||
+                            _selectedRoute != null ||
+                            _selectedBusPlate != null)
+                          return;
+                        // Don't deselect during route preview
+                        final navState = ref.read(navigationStateProvider);
+                        if (navState.route != null ||
+                            navState.destination != null)
+                          return;
+                        _clearAll();
+                      },
                       myLocationEnabled:
                           false, // Using custom LocationOverlayMarker
                       myLocationButtonEnabled: false,

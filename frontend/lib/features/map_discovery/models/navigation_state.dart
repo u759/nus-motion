@@ -37,6 +37,9 @@ enum BusLegState {
 /// Immutable state representing the current navigation context.
 class NavigationState {
   final NavigationStatus status;
+
+  /// Custom origin building. Null means "Current Location" (use GPS).
+  final Building? origin;
   final Building? destination;
   final RoutePlanResult? route;
   final int currentLegIndex;
@@ -50,6 +53,7 @@ class NavigationState {
 
   const NavigationState({
     this.status = NavigationStatus.idle,
+    this.origin,
     this.destination,
     this.route,
     this.currentLegIndex = 0,
@@ -81,6 +85,7 @@ class NavigationState {
 
   NavigationState copyWith({
     NavigationStatus? status,
+    Building? origin,
     Building? destination,
     RoutePlanResult? route,
     int? currentLegIndex,
@@ -91,6 +96,7 @@ class NavigationState {
     String? errorMessage,
     BusLegState? busLegState,
     String? missedBusMessage,
+    bool clearOrigin = false,
     bool clearDestination = false,
     bool clearRoute = false,
     bool clearError = false,
@@ -99,6 +105,7 @@ class NavigationState {
   }) {
     return NavigationState(
       status: status ?? this.status,
+      origin: clearOrigin ? null : (origin ?? this.origin),
       destination: clearDestination ? null : (destination ?? this.destination),
       route: clearRoute ? null : (route ?? this.route),
       currentLegIndex: currentLegIndex ?? this.currentLegIndex,
@@ -118,6 +125,13 @@ class NavigationState {
 /// Riverpod StateNotifier managing navigation flow transitions.
 class NavigationStateNotifier extends StateNotifier<NavigationState> {
   NavigationStateNotifier() : super(const NavigationState());
+
+  /// Set a custom origin (non-GPS). Pass null to revert to "Current Location".
+  void setOrigin(Building? building) {
+    state = building != null
+        ? state.copyWith(origin: building, clearRoute: true)
+        : state.copyWith(clearOrigin: true, clearRoute: true);
+  }
 
   /// User selected a destination from search results.
   /// Transitions: idle|searching → routePreview (awaiting route selection).
@@ -163,6 +177,28 @@ class NavigationStateNotifier extends StateNotifier<NavigationState> {
   /// User cancelled navigation or closed the panel.
   void cancelNavigation() {
     state = const NavigationState(status: NavigationStatus.idle);
+  }
+
+  /// Clear only the destination (used when swapping origin ↔ destination).
+  void clearDestination() {
+    state = state.copyWith(
+      status: NavigationStatus.idle,
+      clearDestination: true,
+      clearRoute: true,
+    );
+  }
+
+  /// Swap origin and destination.
+  void swapOriginDestination() {
+    if (state.destination == null) return;
+    final oldOrigin = state.origin;
+    final oldDest = state.destination;
+    state = state.copyWith(
+      origin: oldDest,
+      destination: oldOrigin,
+      clearOrigin: oldOrigin == null,
+      clearRoute: true,
+    );
   }
 
   /// Enter search mode (user tapped search bar).

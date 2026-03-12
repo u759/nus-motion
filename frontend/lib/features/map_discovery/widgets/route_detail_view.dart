@@ -88,6 +88,10 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     // Watch routeProvider for fresh data
     final navState = ref.watch(navigationStateProvider);
     final displayRoute = _getDisplayRoute(navState);
+    final skipFirstWalk =
+        navState.origin != null &&
+        displayRoute.legs.isNotEmpty &&
+        displayRoute.legs.first.isWalk;
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -115,7 +119,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               ),
               child: Column(
                 children: [
-                  _buildPanelHeader(displayRoute),
+                  _buildPanelHeader(displayRoute, skipFirstWalk: skipFirstWalk),
                   Divider(height: 1, color: colors.borderLight),
                   Expanded(
                     child: SingleChildScrollView(
@@ -123,7 +127,10 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
                         horizontal: 20,
                         vertical: 16,
                       ),
-                      child: _buildJourneyTimeline(displayRoute),
+                      child: _buildJourneyTimeline(
+                        displayRoute,
+                        skipFirstWalk: skipFirstWalk,
+                      ),
                     ),
                   ),
                 ],
@@ -140,7 +147,9 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
   RoutePlanResult _getDisplayRoute(NavigationState navState) {
     if (navState.destination == null) return widget.route;
 
-    final from = widget.userPosition != null
+    final from = navState.origin != null
+        ? navState.origin!.name
+        : widget.userPosition != null
         ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
         : 'Current Location';
     final to = navState.destination!.name;
@@ -186,8 +195,15 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     return true;
   }
 
-  Widget _buildPanelHeader(RoutePlanResult route) {
+  Widget _buildPanelHeader(
+    RoutePlanResult route, {
+    bool skipFirstWalk = false,
+  }) {
     final colors = context.nusColors;
+    final firstWalkMinutes = skipFirstWalk
+        ? (route.legs.first.minutes ?? 0)
+        : 0;
+    final displayTotalMinutes = route.totalMinutes - firstWalkMinutes;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
       child: Row(
@@ -232,7 +248,7 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '${route.totalMinutes} min',
+              '$displayTotalMinutes min',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -386,9 +402,12 @@ class _RouteDetailViewState extends ConsumerState<RouteDetailView>
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
-  Widget _buildJourneyTimeline(RoutePlanResult route) {
+  Widget _buildJourneyTimeline(
+    RoutePlanResult route, {
+    bool skipFirstWalk = false,
+  }) {
     final colors = context.nusColors;
-    final legs = route.legs;
+    final legs = skipFirstWalk ? route.legs.sublist(1) : route.legs;
     if (legs.isEmpty) {
       return Center(
         child: Text(

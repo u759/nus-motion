@@ -5,6 +5,7 @@ import 'package:frontend/core/utils/distance_formatter.dart';
 import 'package:frontend/core/utils/eta_formatter.dart';
 import 'package:frontend/core/widgets/empty_state.dart';
 import 'package:frontend/core/widgets/error_card.dart';
+import 'package:frontend/core/widgets/marquee_scroll.dart';
 import 'package:frontend/core/widgets/pickup_points_list.dart';
 import 'package:frontend/core/widgets/route_badge.dart';
 import 'package:frontend/core/widgets/selectable_card.dart';
@@ -274,8 +275,7 @@ class _ArrivalsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return MarqueeScroll(
       child: Row(
         children: [
           for (int i = 0; i < arrivals.length; i++) ...[

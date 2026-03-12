@@ -42,13 +42,21 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel>
     _startRefreshTimer();
   }
 
+  String _resolveFrom() {
+    final navState = ref.read(navigationStateProvider);
+    if (navState.origin != null) {
+      return navState.origin!.name;
+    }
+    return widget.userPosition != null
+        ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
+        : 'Current Location';
+  }
+
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) {
-        final from = widget.userPosition != null
-            ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
-            : 'Current Location';
+        final from = _resolveFrom();
         final to = widget.destination.name;
         ref.invalidate(routeProvider((from: from, to: to)));
       }
@@ -79,9 +87,7 @@ class _RouteSuggestionsPanelState extends ConsumerState<RouteSuggestionsPanel>
     final colors = context.nusColors;
 
     // Build route query params
-    final from = widget.userPosition != null
-        ? '${widget.userPosition!.latitude},${widget.userPosition!.longitude}'
-        : 'Current Location';
+    final from = _resolveFrom();
     final to = widget.destination.name;
 
     final routesAsync = ref.watch(routeProvider((from: from, to: to)));
@@ -294,6 +300,19 @@ class _RouteCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.nusColors;
 
+    // When origin is a custom building (not GPS), skip the first walk leg
+    final navState = ref.watch(navigationStateProvider);
+    final skipFirstWalk =
+        navState.origin != null &&
+        route.legs.isNotEmpty &&
+        route.legs.first.isWalk;
+    final firstWalkMinutes = skipFirstWalk
+        ? (route.legs.first.minutes ?? 0)
+        : 0;
+    final displayTotalMinutes = route.totalMinutes - firstWalkMinutes;
+    final displayWalkingMinutes = route.walkingMinutes - firstWalkMinutes;
+    final displayLegs = skipFirstWalk ? route.legs.sublist(1) : route.legs;
+
     // Resolve first bus leg for live arrival lookup
     final firstBusLeg = route.legs.where((l) => l.isBus).firstOrNull;
     String? stopCode;
@@ -369,7 +388,7 @@ class _RouteCard extends ConsumerWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      '${route.totalMinutes}',
+                      '$displayTotalMinutes',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
@@ -442,12 +461,12 @@ class _RouteCard extends ConsumerWidget {
             const SizedBox(height: 12),
 
             // Row 2: Journey strip
-            _buildJourneyStrip(colors),
+            _buildJourneyStrip(colors, displayLegs),
 
             const SizedBox(height: 10),
 
             // Row 3: De-emphasized time breakdown footer
-            _buildFooter(colors),
+            _buildFooter(colors, displayWalkingMinutes),
           ],
         ),
       ),
@@ -455,8 +474,8 @@ class _RouteCard extends ConsumerWidget {
   }
 
   /// Horizontal journey strip with proportional segments for each leg.
-  Widget _buildJourneyStrip(NusColorsData colors) {
-    final displayLegs = route.legs
+  Widget _buildJourneyStrip(NusColorsData colors, List<RouteLeg> legs) {
+    final displayLegs = legs
         .where((l) => (l.isWalk || l.isBus) && (l.minutes ?? 0) > 0)
         .toList();
 
@@ -544,13 +563,13 @@ class _RouteCard extends ConsumerWidget {
   }
 
   /// Subtle footer row: walk, wait, ride breakdown + transfer count.
-  Widget _buildFooter(NusColorsData colors) {
+  Widget _buildFooter(NusColorsData colors, int walkingMinutes) {
     return Row(
       children: [
         Icon(Icons.directions_walk, size: 12, color: colors.textMuted),
         const SizedBox(width: 3),
         Text(
-          '${route.walkingMinutes}m',
+          '${walkingMinutes}m',
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
